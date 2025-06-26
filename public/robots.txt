@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://power-platform.m365calc.com/sitemap.xml
