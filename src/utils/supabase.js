@@ -656,6 +656,6 @@ export const supabaseHelpers = {
 // Initialize database on module load
 supabaseHelpers.initializeDatabase().catch(console.error);
 
-export { supabase };
+export default supabase;
 
-//export default supabase;
+export { supabase };
