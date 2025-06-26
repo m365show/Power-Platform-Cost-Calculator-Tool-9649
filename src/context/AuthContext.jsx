@@ -4,6 +4,22 @@ import { supabaseHelpers } from '../utils/supabase';
 const AuthContext = createContext();
 
 const PERMISSIONS = {
+  SUPER_ADMIN: [
+    'view_all_estimates',
+    'manage_users',
+    'create_users',
+    'edit_users',
+    'delete_users',
+    'export_data',
+    'system_settings',
+    'view_analytics',
+    'approve_estimates',
+    'create_estimates',
+    'edit_estimates',
+    'delete_estimates',
+    'manage_consultations',
+    'view_all_consultations'
+  ],
   ADMIN: [
     'view_all_estimates',
     'manage_users',
@@ -16,7 +32,8 @@ const PERMISSIONS = {
     'approve_estimates',
     'create_estimates',
     'edit_estimates',
-    'delete_estimates'
+    'manage_consultations',
+    'view_all_consultations'
   ],
   MANAGER: [
     'view_team_estimates',
@@ -25,13 +42,17 @@ const PERMISSIONS = {
     'view_analytics',
     'create_estimates',
     'edit_estimates',
-    'export_team_data'
+    'export_team_data',
+    'manage_consultations',
+    'view_team_consultations'
   ],
   CONSULTANT: [
     'create_estimates',
     'view_own_estimates',
     'edit_own_estimates',
-    'export_own_data'
+    'export_own_data',
+    'manage_own_consultations',
+    'view_assigned_consultations'
   ],
   VIEWER: [
     'view_own_estimates',
@@ -83,14 +104,16 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const checkAuth = async () => {
       try {
+        dispatch({ type: 'SET_LOADING', payload: true });
         const userData = await supabaseHelpers.getCurrentUser();
+        
         if (userData) {
-          dispatch({
-            type: 'SET_USER',
-            payload: {
-              user: userData,
-              profile: userData.profile
-            }
+          dispatch({ 
+            type: 'SET_USER', 
+            payload: { 
+              user: userData, 
+              profile: userData.profile 
+            } 
           });
         } else {
           dispatch({ type: 'SET_LOADING', payload: false });
@@ -102,6 +125,24 @@ export function AuthProvider({ children }) {
     };
 
     checkAuth();
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        const userData = await supabaseHelpers.getCurrentUser();
+        dispatch({ 
+          type: 'SET_USER', 
+          payload: { 
+            user: userData, 
+            profile: userData.profile 
+          } 
+        });
+      } else if (event === 'SIGNED_OUT') {
+        dispatch({ type: 'LOGOUT' });
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const login = async (email, password) => {
@@ -111,20 +152,25 @@ export function AuthProvider({ children }) {
       const authData = await supabaseHelpers.signIn(email, password);
       const userData = await supabaseHelpers.getCurrentUser();
       
-      dispatch({
-        type: 'SET_USER',
-        payload: {
-          user: userData,
-          profile: userData.profile
-        }
-      });
-      
-      return { success: true };
+      if (userData && userData.profile) {
+        dispatch({ 
+          type: 'SET_USER', 
+          payload: { 
+            user: userData, 
+            profile: userData.profile 
+          } 
+        });
+        return { success: true, user: userData };
+      } else {
+        throw new Error('User profile not found');
+      }
     } catch (error) {
       console.error('Login failed:', error);
-      return { success: false, error: error.message };
-    } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
+      return { 
+        success: false, 
+        error: error.message || 'Login failed. Please check your credentials.' 
+      };
     }
   };
 
@@ -132,7 +178,7 @@ export function AuthProvider({ children }) {
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
       
-      const result = await supabaseHelpers.createUser({
+      const result = await supabaseHelpers.signUp({
         ...userData,
         role: 'VIEWER' // Force VIEWER role for public signup
       });
@@ -140,7 +186,10 @@ export function AuthProvider({ children }) {
       return { success: true, user: result.user };
     } catch (error) {
       console.error('Sign up failed:', error);
-      return { success: false, error: error.message };
+      return { 
+        success: false, 
+        error: error.message || 'Registration failed. Please try again.' 
+      };
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
@@ -170,7 +219,8 @@ export function AuthProvider({ children }) {
 
   const canCreateRole = (role) => {
     if (!state.isAuthenticated) return false;
-    if (state.profile?.role === 'ADMIN') return true;
+    if (state.profile?.role === 'SUPER_ADMIN') return true;
+    if (state.profile?.role === 'ADMIN' && ['VIEWER', 'CONSULTANT', 'MANAGER'].includes(role)) return true;
     return false;
   };
 

@@ -6,6 +6,7 @@ export function useUserManagement() {
   const { profile } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchUsers();
@@ -14,10 +15,12 @@ export function useUserManagement() {
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      setError(null);
       const userData = await supabaseHelpers.getUsers();
       setUsers(userData);
     } catch (error) {
       console.error('Error fetching users:', error);
+      setError(error.message);
     } finally {
       setLoading(false);
     }
@@ -25,43 +28,51 @@ export function useUserManagement() {
 
   const createUser = async (userData) => {
     try {
+      setError(null);
       const result = await supabaseHelpers.createUser(userData);
       await fetchUsers(); // Refresh the list
       return result;
     } catch (error) {
       console.error('Error creating user:', error);
+      setError(error.message);
       throw error;
     }
   };
 
   const updateUser = async (userId, userData) => {
     try {
+      setError(null);
       await supabaseHelpers.updateUser(userId, userData);
       await fetchUsers(); // Refresh the list
     } catch (error) {
       console.error('Error updating user:', error);
+      setError(error.message);
       throw error;
     }
   };
 
   const deleteUser = async (userId) => {
     try {
+      setError(null);
       await supabaseHelpers.deleteUser(userId);
       await fetchUsers(); // Refresh the list
     } catch (error) {
       console.error('Error deleting user:', error);
+      setError(error.message);
       throw error;
     }
   };
 
   const inviteUser = async (userId) => {
     try {
+      setError(null);
       // In a real implementation, this would send an invitation email
       console.log('Sending invitation to user:', userId);
       // For now, just update the user to show invitation sent
       await updateUser(userId, { invitation_sent: new Date().toISOString() });
     } catch (error) {
       console.error('Error sending invitation:', error);
+      setError(error.message);
       throw error;
     }
   };
@@ -95,6 +106,7 @@ export function useUserManagement() {
   return {
     users,
     loading,
+    error,
     createUser,
     updateUser,
     deleteUser,

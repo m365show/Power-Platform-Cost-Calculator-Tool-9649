@@ -3,83 +3,12 @@ import { createClient } from '@supabase/supabase-js';
 const SUPABASE_URL = 'https://lgbtneeklnehthwdrobu.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxnYnRuZWVrbG5laHRod2Ryb2J1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3Nzc3MTIsImV4cCI6MjA2NjM1MzcxMn0.BSP_X6j7CB55J76Pr2z3FdUyqykfK3vqSBkNy4CD3is';
 
-if (SUPABASE_URL === 'https://your-project.supabase.co' || SUPABASE_ANON_KEY === 'your-anon-key') {
-  throw new Error('Missing Supabase variables');
-}
-
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true
   }
 });
-
-// Initialize database tables and create Super Admin on first load
-const initializeDatabase = async () => {
-  try {
-    // Check if tables exist and create them if they don't
-    const { data: tables, error: tableError } = await supabase
-      .from('users_ppc_2024')
-      .select('id')
-      .limit(1);
-
-    // If table doesn't exist, we'll get an error, so we create it
-    if (tableError && tableError.code === '42P01') {
-      console.log('Creating database tables...');
-      // Tables will be created via SQL in the database directly
-    }
-
-    // Check if Super Admin exists
-    const { data: existingAdmin, error: adminError } = await supabase
-      .from('users_ppc_2024')
-      .select('*')
-      .eq('email', 'mirko.peters@m365.show')
-      .single();
-
-    if (adminError && adminError.code === 'PGRST116') {
-      // Super Admin doesn't exist, create it
-      console.log('Creating Super Admin account...');
-      
-      // First, create auth user
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email: 'mirko.peters@m365.show',
-        password: 'Bierjunge123!',
-        email_confirm: true,
-        user_metadata: {
-          name: 'Mirko Peters',
-          role: 'SUPER_ADMIN'
-        }
-      });
-
-      if (authError) {
-        console.log('Auth user might already exist, continuing...');
-      }
-
-      // Then create profile
-      const { data: profileData, error: profileError } = await supabase
-        .from('users_ppc_2024')
-        .insert([{
-          auth_id: authData?.user?.id || null,
-          name: 'Mirko Peters',
-          email: 'mirko.peters@m365.show',
-          role: 'SUPER_ADMIN',
-          company: 'M365 Show',
-          department: 'Administration',
-          is_active: true,
-          notes: 'System Super Administrator - Full access to all features'
-        }])
-        .select();
-
-      if (profileError) {
-        console.log('Profile creation error:', profileError);
-      } else {
-        console.log('Super Admin created successfully!');
-      }
-    }
-  } catch (error) {
-    console.log('Database initialization error:', error);
-  }
-};
 
 // Generate session ID for anonymous users
 const generateSessionId = () => {
@@ -88,52 +17,271 @@ const generateSessionId = () => {
 
 // Helper functions for database operations
 export const supabaseHelpers = {
-  // Initialize database
+  // Initialize database and create Super Admin
   async initializeDatabase() {
-    return await initializeDatabase();
+    try {
+      console.log('Checking database initialization...');
+      
+      // Check if Super Admin exists
+      const { data: existingAdmin, error: adminError } = await supabase
+        .from('users_ppc_2024')
+        .select('*')
+        .eq('email', 'mirko.peters@m365.show')
+        .single();
+
+      if (adminError && adminError.code === 'PGRST116') {
+        console.log('Super Admin not found, creating...');
+        // Create Super Admin if doesn't exist
+        await this.createSuperAdmin();
+      } else if (existingAdmin) {
+        console.log('Super Admin already exists:', existingAdmin.email);
+      }
+
+      return { success: true, message: 'Database initialized successfully' };
+    } catch (error) {
+      console.error('Database initialization error:', error);
+      throw error;
+    }
   },
 
-  // Authentication
-  async createUser(userData) {
+  // Create Super Admin account
+  async createSuperAdmin() {
     try {
-      // Create auth user first
+      // First create auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: 'mirko.peters@m365.show',
+        password: 'Bierjunge123!',
+        options: {
+          data: {
+            name: 'Mirko Peters',
+            role: 'SUPER_ADMIN'
+          }
+        }
+      });
+
+      if (authError && !authError.message.includes('already')) {
+        console.error('Auth creation error:', authError);
+        throw authError;
+      }
+
+      // Create or update user profile
+      const { data: profile, error: profileError } = await supabase
+        .from('users_ppc_2024')
+        .upsert([{
+          auth_id: authData?.user?.id,
+          name: 'Mirko Peters',
+          email: 'mirko.peters@m365.show',
+          role: 'SUPER_ADMIN',
+          company: 'M365 Show',
+          department: 'Administration',
+          is_active: true,
+          notes: 'System Super Administrator - Full access to all features'
+        }], { onConflict: 'email' })
+        .select()
+        .single();
+
+      if (profileError) {
+        console.error('Profile creation error:', profileError);
+        throw profileError;
+      }
+
+      console.log('Super Admin created successfully:', profile);
+      return profile;
+    } catch (error) {
+      console.error('Error creating Super Admin:', error);
+      throw error;
+    }
+  },
+
+  // Authentication functions
+  async signIn(email, password) {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) {
+        console.error('Sign in error:', error);
+        throw error;
+      }
+
+      // Update last_active timestamp
+      if (data.user) {
+        await supabase
+          .from('users_ppc_2024')
+          .update({ last_active: new Date().toISOString() })
+          .eq('email', email);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Sign in failed:', error);
+      throw error;
+    }
+  },
+
+  async signUp(userData) {
+    try {
+      // Create auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: userData.email,
-        password: userData.password || 'TempPassword123!', // Temporary password for admin-created users
+        password: userData.password,
         options: {
           data: {
             name: userData.name,
-            role: userData.role || 'VIEWER',
-            company: userData.company,
-            department: userData.department
+            role: userData.role || 'VIEWER'
           }
         }
       });
 
       if (authError) {
-        // If user already exists in auth, continue with profile creation
-        console.log('Auth error (might be existing user):', authError);
+        console.error('Auth signup error:', authError);
+        throw authError;
       }
 
-      // Create or update user profile
-      const profileData = {
-        auth_id: authData?.user?.id,
-        name: userData.name,
-        email: userData.email,
-        role: userData.role || 'VIEWER',
-        company: userData.company || '',
-        department: userData.department || '',
-        is_active: userData.isActive !== undefined ? userData.isActive : true,
-        notes: userData.notes || ''
-      };
-
+      // Create user profile
       const { data: profile, error: profileError } = await supabase
         .from('users_ppc_2024')
-        .upsert([profileData], { onConflict: 'email' })
+        .insert([{
+          auth_id: authData.user?.id,
+          name: userData.name,
+          email: userData.email,
+          role: userData.role || 'VIEWER',
+          company: userData.company || '',
+          department: userData.department || '',
+          is_active: true
+        }])
         .select()
         .single();
 
       if (profileError) {
+        console.error('Profile creation error:', profileError);
+        throw profileError;
+      }
+
+      return { user: authData.user, profile };
+    } catch (error) {
+      console.error('Sign up failed:', error);
+      throw error;
+    }
+  },
+
+  async signOut() {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+    } catch (error) {
+      console.error('Sign out error:', error);
+      throw error;
+    }
+  },
+
+  async resetPassword(email) {
+    try {
+      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Reset password error:', error);
+      throw error;
+    }
+  },
+
+  async getCurrentUser() {
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError) {
+        console.error('Auth error:', authError);
+        throw authError;
+      }
+
+      if (!user) return null;
+
+      // Get user profile
+      const { data: profile, error: profileError } = await supabase
+        .from('users_ppc_2024')
+        .select('*')
+        .eq('auth_id', user.id)
+        .single();
+
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.error('Profile fetch error:', profileError);
+        throw profileError;
+      }
+
+      // If no profile exists, create one
+      if (!profile) {
+        const { data: newProfile, error: createError } = await supabase
+          .from('users_ppc_2024')
+          .insert([{
+            auth_id: user.id,
+            name: user.user_metadata?.name || user.email.split('@')[0],
+            email: user.email,
+            role: user.user_metadata?.role || 'VIEWER',
+            company: user.user_metadata?.company || '',
+            department: user.user_metadata?.department || '',
+            is_active: true
+          }])
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('Profile creation error:', createError);
+          return { ...user, profile: null };
+        }
+
+        return { ...user, profile: newProfile };
+      }
+
+      return { ...user, profile };
+    } catch (error) {
+      console.error('Get current user error:', error);
+      return null;
+    }
+  },
+
+  // User management
+  async createUser(userData) {
+    try {
+      // Create auth user first
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: userData.email,
+        password: userData.password || 'TempPassword123!',
+        options: {
+          data: {
+            name: userData.name,
+            role: userData.role || 'VIEWER'
+          }
+        }
+      });
+
+      if (authError && !authError.message.includes('already')) {
+        console.error('Auth creation error:', authError);
+        throw authError;
+      }
+
+      // Create user profile
+      const { data: profile, error: profileError } = await supabase
+        .from('users_ppc_2024')
+        .upsert([{
+          auth_id: authData?.user?.id,
+          name: userData.name,
+          email: userData.email,
+          role: userData.role || 'VIEWER',
+          company: userData.company || '',
+          department: userData.department || '',
+          is_active: userData.isActive !== undefined ? userData.isActive : true,
+          notes: userData.notes || ''
+        }], { onConflict: 'email' })
+        .select()
+        .single();
+
+      if (profileError) {
+        console.error('Profile creation error:', profileError);
         throw profileError;
       }
 
@@ -144,312 +292,309 @@ export const supabaseHelpers = {
     }
   },
 
-  async signIn(email, password) {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
-    if (error) throw error;
-    return data;
-  },
-
-  async signOut() {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-  },
-
-  async resetPassword(email) {
-    const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    if (error) throw error;
-    return data;
-  },
-
-  async updatePassword(newPassword) {
-    const { data, error } = await supabase.auth.updateUser({
-      password: newPassword
-    });
-    if (error) throw error;
-    return data;
-  },
-
-  async getCurrentUser() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-
-    const { data: profile, error } = await supabase
-      .from('users_ppc_2024')
-      .select('*')
-      .eq('email', user.email)
-      .single();
-
-    if (error && error.code !== 'PGRST116') {
-      throw error;
-    }
-
-    // If no profile exists, create one
-    if (!profile && user.email) {
-      const newProfile = {
-        auth_id: user.id,
-        name: user.user_metadata?.name || user.email.split('@')[0],
-        email: user.email,
-        role: user.user_metadata?.role || 'VIEWER',
-        company: user.user_metadata?.company || '',
-        department: user.user_metadata?.department || '',
-        is_active: true
-      };
-
-      const { data: createdProfile, error: createError } = await supabase
+  async getUsers() {
+    try {
+      const { data, error } = await supabase
         .from('users_ppc_2024')
-        .insert([newProfile])
-        .select()
-        .single();
+        .select('*')
+        .order('created_at', { ascending: false });
 
-      if (createError) {
-        console.error('Profile creation error:', createError);
-        return { ...user, profile: null };
+      if (error) {
+        console.error('Get users error:', error);
+        throw error;
       }
 
-      return { ...user, profile: createdProfile };
+      return data || [];
+    } catch (error) {
+      console.error('Get users failed:', error);
+      throw error;
     }
-
-    return { ...user, profile };
-  },
-
-  // User management
-  async getUsers() {
-    const { data, error } = await supabase
-      .from('users_ppc_2024')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return data || [];
   },
 
   async updateUser(userId, updates) {
-    const { data, error } = await supabase
-      .from('users_ppc_2024')
-      .update({
-        ...updates,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', userId)
-      .select();
+    try {
+      const { data, error } = await supabase
+        .from('users_ppc_2024')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId)
+        .select()
+        .single();
 
-    if (error) throw error;
-    return data;
+      if (error) {
+        console.error('Update user error:', error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Update user failed:', error);
+      throw error;
+    }
   },
 
   async deleteUser(userId) {
-    const { error } = await supabase
-      .from('users_ppc_2024')
-      .delete()
-      .eq('id', userId);
+    try {
+      // First get the user to find auth_id
+      const { data: user, error: getUserError } = await supabase
+        .from('users_ppc_2024')
+        .select('auth_id')
+        .eq('id', userId)
+        .single();
 
-    if (error) throw error;
+      if (getUserError) {
+        console.error('Get user for deletion error:', getUserError);
+        throw getUserError;
+      }
+
+      // Delete from users table (this will cascade delete estimates)
+      const { error: deleteError } = await supabase
+        .from('users_ppc_2024')
+        .delete()
+        .eq('id', userId);
+
+      if (deleteError) {
+        console.error('Delete user error:', deleteError);
+        throw deleteError;
+      }
+
+      // Optionally delete auth user (commented out for safety)
+      // if (user.auth_id) {
+      //   await supabase.auth.admin.deleteUser(user.auth_id);
+      // }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Delete user failed:', error);
+      throw error;
+    }
   },
 
-  // Estimate management for logged-in users
+  // Estimate management
   async saveEstimate(estimateData) {
-    const { data, error } = await supabase
-      .from('estimates_ppc_2024')
-      .insert([estimateData])
-      .select();
+    try {
+      const { data, error } = await supabase
+        .from('estimates_ppc_2024')
+        .insert([estimateData])
+        .select()
+        .single();
 
-    if (error) throw error;
-    return data[0];
+      if (error) {
+        console.error('Save estimate error:', error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Save estimate failed:', error);
+      throw error;
+    }
   },
 
   async getEstimates(userId = null) {
-    let query = supabase
-      .from('estimates_ppc_2024')
-      .select(`
-        *,
-        user:users_ppc_2024(name, email, company, role)
-      `)
-      .order('created_at', { ascending: false });
+    try {
+      let query = supabase
+        .from('estimates_ppc_2024')
+        .select(`
+          *,
+          user:users_ppc_2024(name, email, company, role)
+        `)
+        .order('created_at', { ascending: false });
 
-    if (userId) {
-      query = query.eq('user_id', userId);
+      if (userId) {
+        query = query.eq('user_id', userId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Get estimates error:', error);
+        throw error;
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Get estimates failed:', error);
+      throw error;
     }
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return data || [];
   },
 
   // Anonymous estimate management
   async saveAnonymousEstimate(estimateData) {
-    const sessionId = generateSessionId();
-    const anonymousData = {
-      ...estimateData,
-      session_id: sessionId
-    };
+    try {
+      const sessionId = generateSessionId();
+      const anonymousData = {
+        ...estimateData,
+        session_id: sessionId
+      };
 
-    // Create anonymous estimates table if it doesn't exist
-    const { data, error } = await supabase
-      .from('anonymous_estimates_ppc_2024')
-      .insert([anonymousData])
-      .select();
+      const { data, error } = await supabase
+        .from('anonymous_estimates_ppc_2024')
+        .insert([anonymousData])
+        .select()
+        .single();
 
-    if (error) {
-      // If table doesn't exist, create it and try again
-      console.log('Creating anonymous estimates table...');
-      return { ...estimateData, sessionId };
+      if (error) {
+        console.error('Save anonymous estimate error:', error);
+        throw error;
+      }
+
+      return { ...data, sessionId };
+    } catch (error) {
+      console.error('Save anonymous estimate failed:', error);
+      throw error;
     }
-
-    return { ...data[0], sessionId };
   },
 
   async getAnonymousEstimates() {
-    const { data, error } = await supabase
-      .from('anonymous_estimates_ppc_2024')
-      .select('*')
-      .order('created_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('anonymous_estimates_ppc_2024')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    if (error) {
-      console.log('Anonymous estimates table might not exist yet');
+      if (error) {
+        console.error('Get anonymous estimates error:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Get anonymous estimates failed:', error);
       return [];
     }
-    return data || [];
   },
 
   // Consultation requests
-  async createConsultationRequest(requestData) {
-    const { data, error } = await supabase
-      .from('consultation_requests_ppc_2024')
-      .insert([requestData])
-      .select();
+  async requestConsultation(estimateId, contactInfo, isAnonymous = false) {
+    try {
+      const requestData = {
+        estimate_id: !isAnonymous ? estimateId : null,
+        anonymous_estimate_id: isAnonymous ? estimateId : null,
+        requester_name: contactInfo.name,
+        requester_email: contactInfo.email,
+        company_name: contactInfo.company,
+        phone: contactInfo.phone,
+        preferred_contact_method: contactInfo.preferredContact || 'email',
+        message: contactInfo.message,
+        urgency: contactInfo.urgency || 'normal',
+        status: 'pending'
+      };
 
-    if (error) {
-      console.log('Consultation requests table might not exist yet');
-      return null;
+      const { data, error } = await supabase
+        .from('consultation_requests_ppc_2024')
+        .insert([requestData])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Request consultation error:', error);
+        throw error;
+      }
+
+      // Update the estimate to mark consultation as requested
+      if (!isAnonymous) {
+        await supabase
+          .from('estimates_ppc_2024')
+          .update({
+            consultant_requested: true,
+            consultant_request_date: new Date().toISOString(),
+            status: 'consultant_requested'
+          })
+          .eq('id', estimateId);
+      } else {
+        await supabase
+          .from('anonymous_estimates_ppc_2024')
+          .update({
+            consultant_requested: true,
+            consultant_request_date: new Date().toISOString()
+          })
+          .eq('id', estimateId);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Request consultation failed:', error);
+      throw error;
     }
-    return data[0];
   },
 
   async getConsultationRequests(consultantId = null) {
-    let query = supabase
-      .from('consultation_requests_ppc_2024')
-      .select(`
-        *,
-        estimate:estimates_ppc_2024(*),
-        anonymous_estimate:anonymous_estimates_ppc_2024(*),
-        assigned_consultant:users_ppc_2024(name, email)
-      `)
-      .order('created_at', { ascending: false });
+    try {
+      let query = supabase
+        .from('consultation_requests_ppc_2024')
+        .select(`
+          *,
+          estimate:estimates_ppc_2024(*),
+          anonymous_estimate:anonymous_estimates_ppc_2024(*),
+          assigned_consultant:users_ppc_2024(name, email)
+        `)
+        .order('created_at', { ascending: false });
 
-    if (consultantId) {
-      query = query.eq('assigned_consultant_id', consultantId);
-    }
+      if (consultantId) {
+        query = query.eq('assigned_consultant_id', consultantId);
+      }
 
-    const { data, error } = await query;
-    if (error) {
-      console.log('Consultation requests query error:', error);
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Get consultation requests error:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Get consultation requests failed:', error);
       return [];
     }
-    return data || [];
   },
 
   async updateConsultationRequest(requestId, updates) {
-    const { data, error } = await supabase
-      .from('consultation_requests_ppc_2024')
-      .update({
-        ...updates,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', requestId)
-      .select();
-
-    if (error) throw error;
-    return data[0];
-  },
-
-  async assignConsultant(requestId, consultantId) {
-    return this.updateConsultationRequest(requestId, {
-      assigned_consultant_id: consultantId,
-      status: 'assigned'
-    });
-  },
-
-  // Request consultation for estimate
-  async requestConsultation(estimateId, contactInfo, isAnonymous = false) {
-    const requestData = {
-      estimate_id: !isAnonymous ? estimateId : null,
-      anonymous_estimate_id: isAnonymous ? estimateId : null,
-      requester_name: contactInfo.name,
-      requester_email: contactInfo.email,
-      company_name: contactInfo.company,
-      phone: contactInfo.phone,
-      preferred_contact_method: contactInfo.preferredContact || 'email',
-      message: contactInfo.message,
-      urgency: contactInfo.urgency || 'normal',
-      status: 'pending'
-    };
-
-    // Also update the estimate to mark consultation as requested
-    if (!isAnonymous) {
-      await supabase
-        .from('estimates_ppc_2024')
+    try {
+      const { data, error } = await supabase
+        .from('consultation_requests_ppc_2024')
         .update({
-          consultant_requested: true,
-          consultant_request_date: new Date().toISOString(),
-          status: 'consultant_requested'
+          ...updates,
+          updated_at: new Date().toISOString()
         })
-        .eq('id', estimateId);
-    } else {
-      await supabase
-        .from('anonymous_estimates_ppc_2024')
-        .update({
-          consultant_requested: true,
-          consultant_request_date: new Date().toISOString()
-        })
-        .eq('id', estimateId);
+        .eq('id', requestId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Update consultation request error:', error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Update consultation request failed:', error);
+      throw error;
     }
-
-    return this.createConsultationRequest(requestData);
   },
 
   // Analytics and reporting
   async getEstimateStats() {
     try {
-      // Get regular estimates stats
-      const { data: estimates, error: estimatesError } = await supabase
-        .from('estimates_ppc_2024')
-        .select('status, cost_min, cost_max, complexity, created_at, consultant_requested');
+      const [estimatesResult, anonymousResult, consultationResult] = await Promise.all([
+        supabase.from('estimates_ppc_2024').select('status, cost_min, cost_max, complexity, created_at, consultant_requested'),
+        supabase.from('anonymous_estimates_ppc_2024').select('cost_min, cost_max, complexity, created_at, consultant_requested'),
+        supabase.from('consultation_requests_ppc_2024').select('status, created_at, urgency')
+      ]);
 
-      if (estimatesError) {
-        console.log('Estimates query error:', estimatesError);
-      }
+      const estimates = estimatesResult.data || [];
+      const anonymousEstimates = anonymousResult.data || [];
+      const consultations = consultationResult.data || [];
 
-      // Get anonymous estimates stats
-      const { data: anonymousEstimates, error: anonymousError } = await supabase
-        .from('anonymous_estimates_ppc_2024')
-        .select('cost_min, cost_max, complexity, created_at, consultant_requested');
-
-      if (anonymousError) {
-        console.log('Anonymous estimates query error:', anonymousError);
-      }
-
-      // Get consultation requests stats
-      const { data: consultationRequests, error: consultationError } = await supabase
-        .from('consultation_requests_ppc_2024')
-        .select('status, created_at, urgency');
-
-      if (consultationError) {
-        console.log('Consultation requests query error:', consultationError);
-      }
-
-      const allEstimates = [...(estimates || []), ...(anonymousEstimates || [])];
-      const consultations = consultationRequests || [];
+      const allEstimates = [...estimates, ...anonymousEstimates];
 
       const stats = {
         total: allEstimates.length,
-        totalRegistered: (estimates || []).length,
-        totalAnonymous: (anonymousEstimates || []).length,
-        completed: (estimates || []).filter(e => e.status === 'completed').length,
+        totalRegistered: estimates.length,
+        totalAnonymous: anonymousEstimates.length,
+        completed: estimates.filter(e => e.status === 'completed').length,
         consultationRequested: allEstimates.filter(e => e.consultant_requested).length,
         totalValue: allEstimates.reduce((sum, e) => sum + (e.cost_max || 0), 0),
         avgValue: allEstimates.length > 0 ? 
@@ -487,22 +632,28 @@ export const supabaseHelpers = {
 
   // Get consultants for assignment
   async getConsultants() {
-    const { data, error } = await supabase
-      .from('users_ppc_2024')
-      .select('id, name, email, company')
-      .in('role', ['CONSULTANT', 'MANAGER', 'ADMIN', 'SUPER_ADMIN'])
-      .eq('is_active', true)
-      .order('name');
+    try {
+      const { data, error } = await supabase
+        .from('users_ppc_2024')
+        .select('id, name, email, company')
+        .in('role', ['CONSULTANT', 'MANAGER', 'ADMIN', 'SUPER_ADMIN'])
+        .eq('is_active', true)
+        .order('name');
 
-    if (error) {
-      console.log('Error getting consultants:', error);
+      if (error) {
+        console.error('Error getting consultants:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Get consultants failed:', error);
       return [];
     }
-    return data || [];
   }
 };
 
-// Initialize database when the module loads
-initializeDatabase();
+// Initialize database on module load
+supabaseHelpers.initializeDatabase().catch(console.error);
 
 export default supabase;
