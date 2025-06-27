@@ -5,94 +5,80 @@ import * as FiIcons from 'react-icons/fi';
 import SafeIcon from '../common/SafeIcon';
 import { supabaseHelpers } from '../utils/supabase';
 
-const { FiShield, FiCheck, FiX, FiUser, FiMail, FiLock, FiDatabase, FiArrowRight } = FiIcons;
+const { FiShield, FiCheck, FiX, FiUser, FiMail, FiLock, FiDatabase, FiArrowRight, FiUsers } = FiIcons;
 
 function SuperAdminSetup() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
-  const [adminExists, setAdminExists] = useState(false);
+  const [users, setUsers] = useState([]);
   const [checkingStatus, setCheckingStatus] = useState(true);
 
   useEffect(() => {
-    checkSuperAdmin();
+    checkDatabase();
   }, []);
 
-  const checkSuperAdmin = async () => {
+  const checkDatabase = async () => {
     try {
       setCheckingStatus(true);
-      const users = await supabaseHelpers.getUsers();
-      const superAdmin = users.find(user => 
-        user.role === 'SUPER_ADMIN' && user.email === 'mirko.peters@m365.show'
-      );
-      setAdminExists(!!superAdmin);
-      
-      if (superAdmin) {
-        console.log('Super Admin found:', superAdmin);
-      }
+      const result = await supabaseHelpers.initializeDatabase();
+      setUsers(result.users);
+      setSuccess(true);
     } catch (error) {
-      console.log('Error checking super admin:', error);
-      setError('Unable to check admin status. Database may need initialization.');
+      console.log('Error checking database:', error);
+      setError('Database needs initialization');
     } finally {
       setCheckingStatus(false);
     }
   };
 
-  const createSuperAdmin = async () => {
-    setLoading(true);
-    setError('');
-    setSuccess(false);
-
-    try {
-      // Create the Super Admin user
-      const result = await supabaseHelpers.createSuperAdmin();
-      console.log('Super Admin created:', result);
-      
-      setSuccess(true);
-      setAdminExists(true);
-      
-      // Auto-redirect to login after 3 seconds
-      setTimeout(() => {
-        navigate('/login');
-      }, 3000);
-    } catch (error) {
-      console.error('Error creating Super Admin:', error);
-      setError(error.message || 'Failed to create Super Admin account');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const initializeDatabase = async () => {
-    setLoading(true);
-    setError('');
-    
-    try {
-      await supabaseHelpers.initializeDatabase();
-      setSuccess(true);
-      await checkSuperAdmin();
-    } catch (error) {
-      console.error('Error initializing database:', error);
-      setError(error.message || 'Failed to initialize database');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const testLogin = async () => {
+  const testLogin = async (email, password, name) => {
     try {
       setLoading(true);
-      const result = await supabaseHelpers.signIn('mirko.peters@m365.show', 'Bierjunge123!');
+      setError('');
       
-      if (result) {
+      const result = await supabaseHelpers.signIn(email, password);
+      
+      if (result && result.profile) {
         setSuccess(true);
+        console.log('✅ Login test successful for:', name);
         setTimeout(() => {
           navigate('/dashboard');
         }, 1500);
+      } else {
+        throw new Error('Login test failed - no profile returned');
       }
     } catch (error) {
+      console.error('❌ Login test failed:', error);
       setError('Login test failed: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createTestUser = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      const testUserData = {
+        name: 'Test User',
+        email: 'test@example.com',
+        password: 'test123!',
+        role: 'VIEWER',
+        company: 'Test Company'
+      };
+
+      const result = await supabaseHelpers.signUp(testUserData);
+      console.log('✅ Test user created:', result);
+      
+      // Refresh the user list
+      await checkDatabase();
+      setSuccess(true);
+    } catch (error) {
+      console.error('❌ Create test user failed:', error);
+      setError('Failed to create test user: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -103,17 +89,17 @@ function SuperAdminSetup() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full mx-4"
+        className="max-w-2xl w-full mx-4"
       >
         <div className="bg-white rounded-xl shadow-lg p-8">
           {/* Header */}
           <div className="text-center mb-8">
-            <SafeIcon icon={FiShield} className="text-6xl text-red-600 mx-auto mb-4" />
+            <SafeIcon icon={FiDatabase} className="text-6xl text-blue-600 mx-auto mb-4" />
             <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              Super Admin Setup
+              Database Status & Testing
             </h2>
             <p className="text-gray-600">
-              Initialize database and create Super Admin account
+              Redesigned database with proper structure and authentication
             </p>
           </div>
 
@@ -121,27 +107,80 @@ function SuperAdminSetup() {
           {checkingStatus && (
             <div className="mb-6 text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-2"></div>
-              <p className="text-gray-600">Checking system status...</p>
+              <p className="text-gray-600">Checking database status...</p>
             </div>
           )}
 
-          {/* Admin Exists Status */}
-          {!checkingStatus && adminExists && (
+          {/* Success Status */}
+          {!checkingStatus && users.length > 0 && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg"
             >
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-3 mb-3">
                 <SafeIcon icon={FiCheck} className="text-green-600" />
                 <div>
-                  <h4 className="font-medium text-green-900">Super Admin Exists</h4>
+                  <h4 className="font-medium text-green-900">Database Ready!</h4>
                   <p className="text-sm text-green-800">
-                    mirko.peters@m365.show is ready for login
+                    Found {users.length} users in the database
                   </p>
                 </div>
               </div>
             </motion.div>
+          )}
+
+          {/* User List */}
+          {!checkingStatus && users.length > 0 && (
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <h3 className="font-medium text-gray-900 mb-3 flex items-center">
+                <SafeIcon icon={FiUsers} className="mr-2" />
+                Available Users
+              </h3>
+              <div className="space-y-3">
+                {users.map((user) => (
+                  <div key={user.id} className="flex items-center justify-between p-3 bg-white rounded border">
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <SafeIcon icon={FiUser} className="text-gray-400" />
+                        <span className="font-medium">{user.name}</span>
+                        <span className={`px-2 py-1 text-xs rounded ${
+                          user.role === 'SUPER_ADMIN' ? 'bg-red-100 text-red-800' :
+                          user.role === 'MANAGER' ? 'bg-blue-100 text-blue-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {user.role}
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-600 flex items-center mt-1">
+                        <SafeIcon icon={FiMail} className="mr-1" />
+                        {user.email}
+                      </div>
+                    </div>
+                    <div className="flex space-x-2">
+                      {user.email === 'mirko.peters@m365.show' && (
+                        <button
+                          onClick={() => testLogin(user.email, 'Bierjunge123!', user.name)}
+                          disabled={loading}
+                          className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 disabled:opacity-50"
+                        >
+                          {loading ? '...' : 'Login'}
+                        </button>
+                      )}
+                      {user.email === 'marcel.broschk@cgi.com' && (
+                        <button
+                          onClick={() => testLogin(user.email, 'marcel123!', user.name)}
+                          disabled={loading}
+                          className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {loading ? '...' : 'Login'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Success Message */}
@@ -153,7 +192,7 @@ function SuperAdminSetup() {
             >
               <SafeIcon icon={FiCheck} />
               <span className="text-sm">
-                {adminExists ? 'Login successful! Redirecting...' : 'Super Admin created successfully! Redirecting to login...'}
+                Login test successful! Redirecting to dashboard...
               </span>
             </motion.div>
           )}
@@ -170,67 +209,25 @@ function SuperAdminSetup() {
             </motion.div>
           )}
 
-          {/* Super Admin Details */}
-          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-            <h3 className="font-medium text-gray-900 mb-3">Super Admin Account Details</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center space-x-2">
-                <SafeIcon icon={FiUser} className="text-gray-400" />
-                <span>Name: Mirko Peters</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <SafeIcon icon={FiMail} className="text-gray-400" />
-                <span>Email: mirko.peters@m365.show</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <SafeIcon icon={FiLock} className="text-gray-400" />
-                <span>Password: Bierjunge123!</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <SafeIcon icon={FiShield} className="text-red-500" />
-                <span>Role: SUPER_ADMIN</span>
-              </div>
-            </div>
-          </div>
-
           {/* Action Buttons */}
           <div className="space-y-3">
-            {!checkingStatus && !adminExists && (
-              <button
-                onClick={createSuperAdmin}
-                disabled={loading}
-                className="w-full bg-red-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-              >
-                {loading ? (
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                ) : (
-                  <>
-                    <SafeIcon icon={FiShield} />
-                    <span>Create Super Admin</span>
-                  </>
-                )}
-              </button>
-            )}
-
-            {!checkingStatus && adminExists && (
-              <button
-                onClick={testLogin}
-                disabled={loading}
-                className="w-full bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-              >
-                {loading ? (
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                ) : (
-                  <>
-                    <SafeIcon icon={FiArrowRight} />
-                    <span>Test Login & Go to Dashboard</span>
-                  </>
-                )}
-              </button>
-            )}
+            <button
+              onClick={createTestUser}
+              disabled={loading}
+              className="w-full bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+            >
+              {loading ? (
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+              ) : (
+                <>
+                  <SafeIcon icon={FiUser} />
+                  <span>Create Test User</span>
+                </>
+              )}
+            </button>
 
             <button
-              onClick={initializeDatabase}
+              onClick={checkDatabase}
               disabled={loading}
               className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
@@ -239,22 +236,22 @@ function SuperAdminSetup() {
               ) : (
                 <>
                   <SafeIcon icon={FiDatabase} />
-                  <span>Initialize Database</span>
+                  <span>Refresh Database Status</span>
                 </>
               )}
             </button>
           </div>
 
-          {/* Permissions Info */}
+          {/* Database Technical Info */}
           <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <h4 className="font-medium text-blue-900 mb-2">Super Admin Permissions</h4>
+            <h4 className="font-medium text-blue-900 mb-2">Database Features</h4>
             <ul className="text-sm text-blue-800 space-y-1">
-              <li>• Complete system access</li>
-              <li>• Create and manage all user types</li>
-              <li>• Access all estimates and data</li>
-              <li>• System configuration</li>
-              <li>• User role management</li>
-              <li>• Database administration</li>
+              <li>✅ Proper UUID primary keys</li>
+              <li>✅ Fixed RLS policies (no recursion)</li>
+              <li>✅ Predefined users created</li>
+              <li>✅ Auth linking system</li>
+              <li>✅ Role-based permissions</li>
+              <li>✅ Estimate management tables</li>
             </ul>
           </div>
 

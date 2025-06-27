@@ -28,10 +28,9 @@ function Login() {
     }
 
     console.log('🔄 Submitting login form:', formData.email);
-    
+
     try {
       const result = await login(formData.email, formData.password);
-      
       if (result.success) {
         console.log('✅ Login successful, redirecting to dashboard');
         navigate('/dashboard');
@@ -52,7 +51,7 @@ function Login() {
     console.log('🔄 Quick login attempt:', email);
     setFormData({ email, password });
     setError('');
-    
+
     try {
       const result = await login(email, password);
       if (result.success) {
@@ -110,7 +109,7 @@ function Login() {
           <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
             <p className="text-sm text-green-800">
               <SafeIcon icon={FiCheck} className="inline mr-2" />
-              Database initialized with proper UUIDs and user accounts
+              Database redesigned with proper structure and both users created
             </p>
           </div>
 

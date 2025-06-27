@@ -20,33 +20,35 @@ export const supabaseHelpers = {
   // Authentication functions
   async signIn(email, password) {
     try {
-      console.log('🔄 Attempting to sign in:', email);
+      console.log('🔄 Starting sign in process for:', email);
       
-      // First try to authenticate with Supabase Auth
+      // Step 1: Check if user exists in our database
+      console.log('🔍 Checking user in database...');
+      const { data: userProfile, error: profileError } = await supabase
+        .from('users_ppc_2024')
+        .select('*')
+        .eq('email', email)
+        .eq('is_active', true)
+        .single();
+
+      if (profileError || !userProfile) {
+        console.error('❌ User not found in database:', profileError);
+        throw new Error('User not found in database. Please contact an administrator.');
+      }
+
+      console.log('✅ User found in database:', userProfile.name, 'Role:', userProfile.role);
+
+      // Step 2: Try to authenticate with Supabase Auth
+      console.log('🔐 Attempting Supabase auth...');
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password
       });
 
       if (authError) {
-        console.log('⚠️ Auth error, user may not exist in auth system:', authError.message);
+        console.log('⚠️ Auth user does not exist, creating auth account...');
         
-        // Check if user exists in our database first
-        const { data: userProfile, error: profileError } = await supabase
-          .from('users_ppc_2024')
-          .select('*')
-          .eq('email', email)
-          .eq('is_active', true)
-          .single();
-
-        if (profileError || !userProfile) {
-          console.error('❌ User not found in database');
-          throw new Error('User not found. Please contact an administrator.');
-        }
-
-        console.log('✅ User found in database, creating auth user:', userProfile.name);
-        
-        // Create auth user since they exist in our database
+        // Step 3: Create auth user if it doesn't exist
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
@@ -59,24 +61,26 @@ export const supabaseHelpers = {
         });
 
         if (signUpError && !signUpError.message.includes('already registered')) {
-          console.error('❌ Auth signup error:', signUpError);
-          throw new Error('Authentication setup failed: ' + signUpError.message);
+          console.error('❌ Auth signup failed:', signUpError);
+          throw new Error('Failed to create authentication account: ' + signUpError.message);
         }
 
-        // Try signing in again after creating auth user
+        console.log('✅ Auth user created, attempting login again...');
+        
+        // Step 4: Try logging in again
         const { data: retryAuthData, error: retryError } = await supabase.auth.signInWithPassword({
           email,
           password
         });
 
         if (retryError) {
-          console.error('❌ Retry auth failed:', retryError);
-          throw new Error('Invalid email or password');
+          console.error('❌ Retry login failed:', retryError);
+          throw new Error('Login failed after account creation: ' + retryError.message);
         }
 
-        console.log('✅ Auth user created and signed in');
+        console.log('✅ Login successful after auth account creation');
         
-        // Update profile with auth_id
+        // Step 5: Link auth_id to profile
         if (retryAuthData.user) {
           await supabase
             .from('users_ppc_2024')
@@ -96,59 +100,34 @@ export const supabaseHelpers = {
         };
       }
 
-      console.log('✅ Auth sign in successful, fetching user profile');
+      console.log('✅ Authentication successful');
 
-      // Get user profile from database
-      const { data: userProfile, error: profileError } = await supabase
-        .from('users_ppc_2024')
-        .select('*')
-        .eq('auth_id', authData.user.id)
-        .single();
-
-      let profile = userProfile;
-
-      // If not found by auth_id, try by email
-      if (profileError || !userProfile) {
-        console.log('🔄 Profile not found by auth_id, trying by email');
-        
-        const { data: profileByEmail, error: emailError } = await supabase
-          .from('users_ppc_2024')
-          .select('*')
-          .eq('email', email)
-          .eq('is_active', true)
-          .single();
-
-        if (emailError || !profileByEmail) {
-          console.error('❌ No profile found for authenticated user');
-          throw new Error('User profile not found. Please contact an administrator.');
-        }
-
-        profile = profileByEmail;
-        
-        // Update the profile with auth_id
+      // Step 6: Update profile with auth_id if not already linked
+      if (!userProfile.auth_id) {
+        console.log('🔗 Linking auth_id to profile...');
         await supabase
           .from('users_ppc_2024')
           .update({ 
             auth_id: authData.user.id,
             last_active: new Date().toISOString()
           })
-          .eq('id', profile.id);
+          .eq('id', userProfile.id);
         
-        profile.auth_id = authData.user.id;
+        userProfile.auth_id = authData.user.id;
       } else {
-        // Update last active
+        // Just update last active
         await supabase
           .from('users_ppc_2024')
           .update({ last_active: new Date().toISOString() })
-          .eq('id', profile.id);
+          .eq('id', userProfile.id);
       }
 
-      console.log('✅ User profile loaded:', profile.name, 'Role:', profile.role);
+      console.log('✅ Login completed successfully for:', userProfile.name);
 
       return {
         user: authData.user,
         session: authData.session,
-        profile: profile
+        profile: userProfile
       };
     } catch (error) {
       console.error('❌ Sign in failed:', error);
@@ -160,7 +139,7 @@ export const supabaseHelpers = {
     try {
       console.log('🔄 Creating new user:', userData.email);
       
-      // Create auth user first
+      // Step 1: Create auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: userData.email,
         password: userData.password,
@@ -177,7 +156,9 @@ export const supabaseHelpers = {
         throw authError;
       }
 
-      // Create user profile
+      console.log('✅ Auth user created, creating profile...');
+
+      // Step 2: Create user profile
       const { data: profile, error: profileError } = await supabase
         .from('users_ppc_2024')
         .insert([{
@@ -197,7 +178,7 @@ export const supabaseHelpers = {
         throw profileError;
       }
 
-      console.log('✅ User created successfully');
+      console.log('✅ User created successfully:', profile.name);
       return { user: authData.user, profile };
     } catch (error) {
       console.error('❌ Sign up failed:', error);
@@ -230,6 +211,8 @@ export const supabaseHelpers = {
         return null;
       }
 
+      console.log('🔍 Getting user profile for:', user.email);
+
       // Get user profile by auth_id first, then by email
       let profile = null;
 
@@ -242,16 +225,19 @@ export const supabaseHelpers = {
 
       if (!authIdError && profileByAuthId) {
         profile = profileByAuthId;
+        console.log('✅ Profile found by auth_id:', profile.name);
       } else {
         // If not found by auth_id, try by email
         const { data: profileByEmail, error: emailError } = await supabase
           .from('users_ppc_2024')
           .select('*')
           .eq('email', user.email)
+          .eq('is_active', true)
           .single();
 
         if (!emailError && profileByEmail) {
           profile = profileByEmail;
+          console.log('✅ Profile found by email:', profile.name);
           
           // Update the profile with auth_id
           await supabase
@@ -264,11 +250,10 @@ export const supabaseHelpers = {
       }
 
       if (!profile) {
-        console.log('⚠️ No profile found for user');
+        console.log('⚠️ No profile found for authenticated user');
         return { ...user, profile: null };
       }
 
-      console.log('✅ Current user loaded:', profile.name, 'Role:', profile.role);
       return { ...user, profile };
     } catch (error) {
       console.error('❌ Get current user error:', error);
@@ -317,68 +302,16 @@ export const supabaseHelpers = {
     try {
       console.log('🔄 Initializing database...');
       
-      // The database structure is already created via SQL
-      // Just ensure the predefined users exist
-      await this.initializePredefinedUsers();
+      // Check if users exist
+      const { data: users } = await supabase
+        .from('users_ppc_2024')
+        .select('*');
       
-      console.log('✅ Database initialization complete');
+      console.log('✅ Database initialization complete. Users found:', users?.length || 0);
+      return { success: true, users: users || [] };
     } catch (error) {
       console.error('❌ Database initialization failed:', error);
       throw error;
-    }
-  },
-
-  // Initialize predefined users
-  async initializePredefinedUsers() {
-    try {
-      console.log('🔄 Initializing predefined users...');
-      
-      const predefinedUsers = [
-        {
-          name: 'Mirko Peters',
-          email: 'mirko.peters@m365.show',
-          password: 'Bierjunge123!',
-          role: 'SUPER_ADMIN',
-          company: 'M365 Show',
-          department: 'Administration'
-        },
-        {
-          name: 'Marcel Broschk',
-          email: 'marcel.broschk@cgi.com',
-          password: 'marcel123!',
-          role: 'MANAGER',
-          company: 'CGI',
-          department: 'Management'
-        }
-      ];
-
-      for (const userData of predefinedUsers) {
-        try {
-          // Check if user exists in database
-          const { data: existingUser } = await supabase
-            .from('users_ppc_2024')
-            .select('*')
-            .eq('email', userData.email)
-            .single();
-
-          if (existingUser) {
-            console.log(`✅ User ${userData.email} already exists in database`);
-            continue;
-          }
-
-          // User doesn't exist, create them
-          console.log(`🔄 Creating new user ${userData.email}`);
-          await this.signUp(userData);
-          console.log(`✅ Created user: ${userData.email}`);
-          
-        } catch (error) {
-          console.error(`❌ Error processing user ${userData.email}:`, error);
-        }
-      }
-      
-      console.log('✅ Predefined users initialization complete');
-    } catch (error) {
-      console.error('❌ Error initializing predefined users:', error);
     }
   },
 
@@ -612,11 +545,6 @@ export const supabaseHelpers = {
     }
   }
 };
-
-// Initialize predefined users when the module loads
-setTimeout(() => {
-  supabaseHelpers.initializePredefinedUsers();
-}, 1000);
 
 export default supabase;
 export { supabase };
