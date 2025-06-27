@@ -17,48 +17,100 @@ const generateSessionId = () => {
 
 // Helper functions for database operations
 export const supabaseHelpers = {
-  // Initialize database and create Super Admin
-  async initializeDatabase() {
-    try {
-      console.log('✅ Database already initialized with schema');
-      return { success: true, message: 'Database initialized successfully' };
-    } catch (error) {
-      console.error('Database initialization error:', error);
-      throw error;
-    }
-  },
-
   // Authentication functions
   async signIn(email, password) {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
+      console.log('🔄 Attempting to sign in:', email);
+      
+      // First check if user exists in our database
+      const { data: userProfile, error: profileError } = await supabase
+        .from('users_ppc_2024')
+        .select('*')
+        .eq('email', email)
+        .eq('is_active', true)
+        .single();
 
-      if (error) {
-        console.error('Sign in error:', error);
-        throw error;
+      if (profileError || !userProfile) {
+        console.error('❌ User not found in database:', profileError);
+        throw new Error('User not found or inactive. Please contact an administrator.');
       }
 
-      // Update last_active timestamp
-      if (data.user) {
+      console.log('✅ User found in database:', userProfile);
+
+      // Try to sign in with Supabase Auth
+      let authResult;
+      try {
+        authResult = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+      } catch (authError) {
+        console.log('⚠️ Auth user doesn\'t exist, creating...', authError);
+        
+        // If auth user doesn't exist, create it
+        const signUpResult = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              name: userProfile.name,
+              role: userProfile.role
+            }
+          }
+        });
+
+        if (signUpResult.error && !signUpResult.error.message.includes('already')) {
+          throw new Error('Failed to create auth user: ' + signUpResult.error.message);
+        }
+
+        // Try signing in again
+        authResult = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+      }
+
+      if (authResult.error) {
+        console.error('❌ Auth sign in failed:', authResult.error);
+        throw new Error('Invalid email or password');
+      }
+
+      console.log('✅ Auth sign in successful');
+
+      // Update profile with auth_id if not set
+      if (!userProfile.auth_id && authResult.data.user) {
+        await supabase
+          .from('users_ppc_2024')
+          .update({ 
+            auth_id: authResult.data.user.id,
+            last_active: new Date().toISOString()
+          })
+          .eq('email', email);
+        
+        userProfile.auth_id = authResult.data.user.id;
+      } else {
+        // Update last active
         await supabase
           .from('users_ppc_2024')
           .update({ last_active: new Date().toISOString() })
           .eq('email', email);
       }
 
-      return data;
+      return {
+        ...authResult.data,
+        profile: userProfile
+      };
     } catch (error) {
-      console.error('Sign in failed:', error);
+      console.error('❌ Sign in failed:', error);
       throw error;
     }
   },
 
   async signUp(userData) {
     try {
-      // Create auth user
+      console.log('🔄 Creating new user:', userData.email);
+      
+      // Create auth user first
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: userData.email,
         password: userData.password,
@@ -71,7 +123,7 @@ export const supabaseHelpers = {
       });
 
       if (authError) {
-        console.error('Auth signup error:', authError);
+        console.error('❌ Auth signup error:', authError);
         throw authError;
       }
 
@@ -91,13 +143,14 @@ export const supabaseHelpers = {
         .single();
 
       if (profileError) {
-        console.error('Profile creation error:', profileError);
+        console.error('❌ Profile creation error:', profileError);
         throw profileError;
       }
 
+      console.log('✅ User created successfully');
       return { user: authData.user, profile };
     } catch (error) {
-      console.error('Sign up failed:', error);
+      console.error('❌ Sign up failed:', error);
       throw error;
     }
   },
@@ -106,8 +159,9 @@ export const supabaseHelpers = {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+      console.log('✅ Signed out successfully');
     } catch (error) {
-      console.error('Sign out error:', error);
+      console.error('❌ Sign out error:', error);
       throw error;
     }
   },
@@ -120,7 +174,7 @@ export const supabaseHelpers = {
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Reset password error:', error);
+      console.error('❌ Reset password error:', error);
       throw error;
     }
   },
@@ -130,11 +184,14 @@ export const supabaseHelpers = {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
       if (authError) {
-        console.error('Auth error:', authError);
-        throw authError;
+        console.error('❌ Auth error:', authError);
+        return null;
       }
 
-      if (!user) return null;
+      if (!user) {
+        console.log('ℹ️ No authenticated user');
+        return null;
+      }
 
       // Get user profile
       const { data: profile, error: profileError } = await supabase
@@ -144,89 +201,128 @@ export const supabaseHelpers = {
         .single();
 
       if (profileError && profileError.code !== 'PGRST116') {
-        console.error('Profile fetch error:', profileError);
-        throw profileError;
-      }
-
-      // If no profile exists, create one
-      if (!profile) {
-        const { data: newProfile, error: createError } = await supabase
+        console.error('❌ Profile fetch error:', profileError);
+        
+        // Try to find by email
+        const { data: profileByEmail, error: emailError } = await supabase
           .from('users_ppc_2024')
-          .insert([{
-            auth_id: user.id,
-            name: user.user_metadata?.name || user.email.split('@')[0],
-            email: user.email,
-            role: user.user_metadata?.role || 'VIEWER',
-            company: user.user_metadata?.company || '',
-            department: user.user_metadata?.department || '',
-            is_active: true
-          }])
-          .select()
+          .select('*')
+          .eq('email', user.email)
           .single();
 
-        if (createError) {
-          console.error('Profile creation error:', createError);
+        if (emailError) {
+          console.error('❌ Profile by email error:', emailError);
           return { ...user, profile: null };
         }
 
-        return { ...user, profile: newProfile };
+        // Update auth_id
+        if (profileByEmail) {
+          await supabase
+            .from('users_ppc_2024')
+            .update({ auth_id: user.id })
+            .eq('email', user.email);
+          
+          return { ...user, profile: profileByEmail };
+        }
+        
+        return { ...user, profile: null };
       }
 
+      if (!profile) {
+        console.log('⚠️ No profile found for user');
+        return { ...user, profile: null };
+      }
+
+      console.log('✅ Current user loaded:', profile.name);
       return { ...user, profile };
     } catch (error) {
-      console.error('Get current user error:', error);
+      console.error('❌ Get current user error:', error);
       return null;
     }
   },
 
-  // User management
-  async createUser(userData) {
+  // Create predefined users with auth accounts
+  async createPredefinedUsers() {
     try {
-      // Create auth user first
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: userData.email,
-        password: userData.password || 'TempPassword123!',
-        options: {
-          data: {
-            name: userData.name,
-            role: userData.role || 'VIEWER'
-          }
+      console.log('🔄 Creating predefined users...');
+      
+      const predefinedUsers = [
+        {
+          name: 'Mirko Peters',
+          email: 'mirko.peters@m365.show',
+          password: 'Bierjunge123!',
+          role: 'SUPER_ADMIN',
+          company: 'M365 Show',
+          department: 'Administration'
+        },
+        {
+          name: 'Marcel Broschk',
+          email: 'marcel.broschk@cgi.com',
+          password: 'marcel123!',
+          role: 'MANAGER',
+          company: 'CGI',
+          department: 'Management'
         }
-      });
+      ];
 
-      if (authError && !authError.message.includes('already')) {
-        console.error('Auth creation error:', authError);
-        throw authError;
+      for (const userData of predefinedUsers) {
+        try {
+          // Check if user already exists in database
+          const { data: existingUser } = await supabase
+            .from('users_ppc_2024')
+            .select('*')
+            .eq('email', userData.email)
+            .single();
+
+          if (existingUser) {
+            console.log(`✅ User ${userData.email} already exists`);
+            
+            // Try to create auth user if auth_id is missing
+            if (!existingUser.auth_id) {
+              try {
+                const { data: authData, error: authError } = await supabase.auth.signUp({
+                  email: userData.email,
+                  password: userData.password,
+                  options: {
+                    data: {
+                      name: userData.name,
+                      role: userData.role
+                    }
+                  }
+                });
+
+                if (!authError && authData.user) {
+                  // Update profile with auth_id
+                  await supabase
+                    .from('users_ppc_2024')
+                    .update({ auth_id: authData.user.id })
+                    .eq('email', userData.email);
+                  
+                  console.log(`✅ Auth account created for ${userData.email}`);
+                }
+              } catch (authError) {
+                console.log(`⚠️ Auth account may already exist for ${userData.email}`);
+              }
+            }
+            continue;
+          }
+
+          // Create new user
+          await this.signUp(userData);
+          console.log(`✅ Created user: ${userData.email}`);
+          
+        } catch (error) {
+          console.error(`❌ Error creating user ${userData.email}:`, error);
+        }
       }
-
-      // Create user profile
-      const { data: profile, error: profileError } = await supabase
-        .from('users_ppc_2024')
-        .upsert([{
-          auth_id: authData?.user?.id,
-          name: userData.name,
-          email: userData.email,
-          role: userData.role || 'VIEWER',
-          company: userData.company || '',
-          department: userData.department || '',
-          is_active: userData.isActive !== undefined ? userData.isActive : true,
-          notes: userData.notes || ''
-        }], { onConflict: 'email' })
-        .select()
-        .single();
-
-      if (profileError) {
-        console.error('Profile creation error:', profileError);
-        throw profileError;
-      }
-
-      return { user: authData?.user, profile };
+      
+      console.log('✅ Predefined users setup complete');
     } catch (error) {
-      console.error('Create user error:', error);
-      throw error;
+      console.error('❌ Error creating predefined users:', error);
     }
   },
 
+  // User management functions
   async getUsers() {
     try {
       const { data, error } = await supabase
@@ -235,13 +331,13 @@ export const supabaseHelpers = {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Get users error:', error);
+        console.error('❌ Get users error:', error);
         throw error;
       }
 
       return data || [];
     } catch (error) {
-      console.error('Get users failed:', error);
+      console.error('❌ Get users failed:', error);
       throw error;
     }
   },
@@ -259,45 +355,32 @@ export const supabaseHelpers = {
         .single();
 
       if (error) {
-        console.error('Update user error:', error);
+        console.error('❌ Update user error:', error);
         throw error;
       }
 
       return data;
     } catch (error) {
-      console.error('Update user failed:', error);
+      console.error('❌ Update user failed:', error);
       throw error;
     }
   },
 
   async deleteUser(userId) {
     try {
-      // First get the user to find auth_id
-      const { data: user, error: getUserError } = await supabase
-        .from('users_ppc_2024')
-        .select('auth_id')
-        .eq('id', userId)
-        .single();
-
-      if (getUserError) {
-        console.error('Get user for deletion error:', getUserError);
-        throw getUserError;
-      }
-
-      // Delete from users table (this will cascade delete estimates)
       const { error: deleteError } = await supabase
         .from('users_ppc_2024')
         .delete()
         .eq('id', userId);
 
       if (deleteError) {
-        console.error('Delete user error:', deleteError);
+        console.error('❌ Delete user error:', deleteError);
         throw deleteError;
       }
 
       return { success: true };
     } catch (error) {
-      console.error('Delete user failed:', error);
+      console.error('❌ Delete user failed:', error);
       throw error;
     }
   },
@@ -312,13 +395,13 @@ export const supabaseHelpers = {
         .single();
 
       if (error) {
-        console.error('Save estimate error:', error);
+        console.error('❌ Save estimate error:', error);
         throw error;
       }
 
       return data;
     } catch (error) {
-      console.error('Save estimate failed:', error);
+      console.error('❌ Save estimate failed:', error);
       throw error;
     }
   },
@@ -340,13 +423,13 @@ export const supabaseHelpers = {
       const { data, error } = await query;
 
       if (error) {
-        console.error('Get estimates error:', error);
+        console.error('❌ Get estimates error:', error);
         throw error;
       }
 
       return data || [];
     } catch (error) {
-      console.error('Get estimates failed:', error);
+      console.error('❌ Get estimates failed:', error);
       throw error;
     }
   },
@@ -367,33 +450,14 @@ export const supabaseHelpers = {
         .single();
 
       if (error) {
-        console.error('Save anonymous estimate error:', error);
+        console.error('❌ Save anonymous estimate error:', error);
         throw error;
       }
 
       return { ...data, sessionId };
     } catch (error) {
-      console.error('Save anonymous estimate failed:', error);
+      console.error('❌ Save anonymous estimate failed:', error);
       throw error;
-    }
-  },
-
-  async getAnonymousEstimates() {
-    try {
-      const { data, error } = await supabase
-        .from('anonymous_estimates_ppc_2024')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Get anonymous estimates error:', error);
-        return [];
-      }
-
-      return data || [];
-    } catch (error) {
-      console.error('Get anonymous estimates failed:', error);
-      return [];
     }
   },
 
@@ -420,87 +484,13 @@ export const supabaseHelpers = {
         .single();
 
       if (error) {
-        console.error('Request consultation error:', error);
-        throw error;
-      }
-
-      // Update the estimate to mark consultation as requested
-      if (!isAnonymous) {
-        await supabase
-          .from('estimates_ppc_2024')
-          .update({
-            consultant_requested: true,
-            consultant_request_date: new Date().toISOString(),
-            status: 'consultant_requested'
-          })
-          .eq('id', estimateId);
-      } else {
-        await supabase
-          .from('anonymous_estimates_ppc_2024')
-          .update({
-            consultant_requested: true,
-            consultant_request_date: new Date().toISOString()
-          })
-          .eq('id', estimateId);
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Request consultation failed:', error);
-      throw error;
-    }
-  },
-
-  async getConsultationRequests(consultantId = null) {
-    try {
-      let query = supabase
-        .from('consultation_requests_ppc_2024')
-        .select(`
-          *,
-          estimate:estimates_ppc_2024(*),
-          anonymous_estimate:anonymous_estimates_ppc_2024(*),
-          assigned_consultant:users_ppc_2024(name, email)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (consultantId) {
-        query = query.eq('assigned_consultant_id', consultantId);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('Get consultation requests error:', error);
-        return [];
-      }
-
-      return data || [];
-    } catch (error) {
-      console.error('Get consultation requests failed:', error);
-      return [];
-    }
-  },
-
-  async updateConsultationRequest(requestId, updates) {
-    try {
-      const { data, error } = await supabase
-        .from('consultation_requests_ppc_2024')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', requestId)
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Update consultation request error:', error);
+        console.error('❌ Request consultation error:', error);
         throw error;
       }
 
       return data;
     } catch (error) {
-      console.error('Update consultation request failed:', error);
+      console.error('❌ Request consultation failed:', error);
       throw error;
     }
   },
@@ -544,7 +534,7 @@ export const supabaseHelpers = {
 
       return stats;
     } catch (error) {
-      console.error('Error getting stats:', error);
+      console.error('❌ Error getting stats:', error);
       return {
         total: 0,
         totalRegistered: 0,
@@ -562,30 +552,13 @@ export const supabaseHelpers = {
         }
       };
     }
-  },
-
-  // Get consultants for assignment
-  async getConsultants() {
-    try {
-      const { data, error } = await supabase
-        .from('users_ppc_2024')
-        .select('id, name, email, company')
-        .in('role', ['CONSULTANT', 'MANAGER', 'ADMIN', 'SUPER_ADMIN'])
-        .eq('is_active', true)
-        .order('name');
-
-      if (error) {
-        console.error('Error getting consultants:', error);
-        return [];
-      }
-
-      return data || [];
-    } catch (error) {
-      console.error('Get consultants failed:', error);
-      return [];
-    }
   }
 };
+
+// Initialize predefined users on startup
+setTimeout(() => {
+  supabaseHelpers.createPredefinedUsers();
+}, 2000);
 
 export default supabase;
 export { supabase };

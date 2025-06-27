@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { supabaseHelpers } from '../utils/supabase';
-import { supabase } from '../utils/supabase'; // ✅ HINZUGEFÜGT
+import { supabase } from '../utils/supabase';
 
 const AuthContext = createContext();
 
@@ -106,9 +106,11 @@ export function AuthProvider({ children }) {
     const checkAuth = async () => {
       try {
         dispatch({ type: 'SET_LOADING', payload: true });
-        const userData = await supabaseHelpers.getCurrentUser();
+        console.log('🔄 Checking authentication...');
         
-        if (userData) {
+        const userData = await supabaseHelpers.getCurrentUser();
+        if (userData && userData.profile) {
+          console.log('✅ User authenticated:', userData.profile.name);
           dispatch({ 
             type: 'SET_USER', 
             payload: { 
@@ -117,10 +119,11 @@ export function AuthProvider({ children }) {
             } 
           });
         } else {
+          console.log('ℹ️ No authenticated user');
           dispatch({ type: 'SET_LOADING', payload: false });
         }
       } catch (error) {
-        console.error('Auth check failed:', error);
+        console.error('❌ Auth check failed:', error);
         dispatch({ type: 'SET_LOADING', payload: false });
       }
     };
@@ -129,6 +132,8 @@ export function AuthProvider({ children }) {
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('🔄 Auth state changed:', event);
+      
       if (event === 'SIGNED_IN' && session?.user) {
         const userData = await supabaseHelpers.getCurrentUser();
         dispatch({ 
@@ -149,24 +154,25 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
+      console.log('🔄 Attempting login for:', email);
       
-      const authData = await supabaseHelpers.signIn(email, password);
-      const userData = await supabaseHelpers.getCurrentUser();
+      const result = await supabaseHelpers.signIn(email, password);
       
-      if (userData && userData.profile) {
+      if (result && result.profile) {
+        console.log('✅ Login successful for:', result.profile.name);
         dispatch({ 
           type: 'SET_USER', 
           payload: { 
-            user: userData, 
-            profile: userData.profile 
+            user: result, 
+            profile: result.profile 
           } 
         });
-        return { success: true, user: userData };
+        return { success: true, user: result };
       } else {
-        throw new Error('User profile not found');
+        throw new Error('Login failed - no profile found');
       }
     } catch (error) {
-      console.error('Login failed:', error);
+      console.error('❌ Login failed:', error);
       dispatch({ type: 'SET_LOADING', payload: false });
       return { 
         success: false, 
@@ -178,15 +184,13 @@ export function AuthProvider({ children }) {
   const signUp = async (userData) => {
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
-      
       const result = await supabaseHelpers.signUp({
         ...userData,
         role: 'VIEWER' // Force VIEWER role for public signup
       });
-      
       return { success: true, user: result.user };
     } catch (error) {
-      console.error('Sign up failed:', error);
+      console.error('❌ Sign up failed:', error);
       return { 
         success: false, 
         error: error.message || 'Registration failed. Please try again.' 
@@ -201,7 +205,7 @@ export function AuthProvider({ children }) {
       await supabaseHelpers.signOut();
       dispatch({ type: 'LOGOUT' });
     } catch (error) {
-      console.error('Logout failed:', error);
+      console.error('❌ Logout failed:', error);
     }
   };
 

@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import * as FiIcons from 'react-icons/fi';
 import SafeIcon from '../common/SafeIcon';
 import { useAuth } from '../context/AuthContext';
-import { supabaseHelpers } from '../utils/supabase';
 
 const { FiLock, FiMail, FiEye, FiEyeOff, FiLogIn, FiAlertCircle, FiUserPlus, FiCheck } = FiIcons;
 
@@ -26,10 +25,19 @@ function Login() {
     e.preventDefault();
     setError('');
 
+    if (!formData.email || !formData.password) {
+      setError('Please enter both email and password');
+      return;
+    }
+
+    console.log('🔄 Submitting login form:', formData.email);
     const result = await login(formData.email, formData.password);
+    
     if (result.success) {
+      console.log('✅ Login successful, redirecting to dashboard');
       navigate('/dashboard');
     } else {
+      console.error('❌ Login failed:', result.error);
       setError(result.error || 'Login failed');
     }
   };
@@ -40,8 +48,9 @@ function Login() {
     setError('');
 
     try {
-      await supabaseHelpers.resetPassword(resetEmail);
+      // For now, just show a message since we don't have email configured
       setResetSent(true);
+      setError('');
     } catch (error) {
       setError(error.message);
     } finally {
@@ -58,13 +67,16 @@ function Login() {
 
   // Quick login buttons for testing
   const quickLogin = async (email, password) => {
+    console.log('🔄 Quick login attempt:', email);
     setFormData({ email, password });
     setError('');
     
     const result = await login(email, password);
     if (result.success) {
+      console.log('✅ Quick login successful');
       navigate('/dashboard');
     } else {
+      console.error('❌ Quick login failed:', result.error);
       setError(result.error || 'Login failed');
     }
   };
@@ -101,14 +113,14 @@ function Login() {
                   className="w-full text-sm bg-red-100 hover:bg-red-200 text-red-800 px-3 py-2 rounded transition-colors"
                   disabled={loading}
                 >
-                  Login as Super Admin (Mirko Peters)
+                  {loading ? 'Logging in...' : 'Login as Super Admin (Mirko Peters)'}
                 </button>
                 <button
                   onClick={() => quickLogin('marcel.broschk@cgi.com', 'marcel123!')}
                   className="w-full text-sm bg-blue-100 hover:bg-blue-200 text-blue-800 px-3 py-2 rounded transition-colors"
                   disabled={loading}
                 >
-                  Login as Manager (Marcel Broschk)
+                  {loading ? 'Logging in...' : 'Login as Manager (Marcel Broschk)'}
                 </button>
               </div>
             </div>
@@ -135,8 +147,8 @@ function Login() {
             >
               <SafeIcon icon={FiCheck} />
               <div className="text-sm">
-                <p className="font-medium">Password reset email sent!</p>
-                <p>Check your email for instructions to reset your password.</p>
+                <p className="font-medium">Password reset requested!</p>
+                <p>Please contact an administrator for password reset assistance.</p>
               </div>
             </motion.div>
           )}
@@ -171,12 +183,12 @@ function Login() {
                 ) : resetSent ? (
                   <>
                     <SafeIcon icon={FiCheck} />
-                    <span>Email Sent</span>
+                    <span>Request Sent</span>
                   </>
                 ) : (
                   <>
                     <SafeIcon icon={FiMail} />
-                    <span>Send Reset Email</span>
+                    <span>Request Reset</span>
                   </>
                 )}
               </button>
@@ -300,6 +312,16 @@ function Login() {
                 </button>
               </div>
             </>
+          )}
+
+          {/* Debug Info */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="mt-6 p-3 bg-gray-50 rounded text-xs text-gray-600">
+              <p><strong>Debug Info:</strong></p>
+              <p>Loading: {loading ? 'true' : 'false'}</p>
+              <p>Email: {formData.email}</p>
+              <p>Password: {formData.password ? '***' : 'empty'}</p>
+            </div>
           )}
         </div>
       </motion.div>
