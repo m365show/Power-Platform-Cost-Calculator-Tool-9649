@@ -23,7 +23,9 @@ function SuperAdminSetup() {
     try {
       setCheckingStatus(true);
       const users = await supabaseHelpers.getUsers();
-      const superAdmin = users.find(user => user.role === 'SUPER_ADMIN' && user.email === 'mirko.peters@m365.show');
+      const superAdmin = users.find(user => 
+        user.role === 'SUPER_ADMIN' && user.email === 'mirko.peters@m365.show'
+      );
       setAdminExists(!!superAdmin);
       
       if (superAdmin) {
@@ -46,6 +48,7 @@ function SuperAdminSetup() {
       // Create the Super Admin user
       const result = await supabaseHelpers.createSuperAdmin();
       console.log('Super Admin created:', result);
+      
       setSuccess(true);
       setAdminExists(true);
       
@@ -53,7 +56,6 @@ function SuperAdminSetup() {
       setTimeout(() => {
         navigate('/login');
       }, 3000);
-      
     } catch (error) {
       console.error('Error creating Super Admin:', error);
       setError(error.message || 'Failed to create Super Admin account');
@@ -65,7 +67,7 @@ function SuperAdminSetup() {
   const initializeDatabase = async () => {
     setLoading(true);
     setError('');
-
+    
     try {
       await supabaseHelpers.initializeDatabase();
       setSuccess(true);
@@ -82,6 +84,7 @@ function SuperAdminSetup() {
     try {
       setLoading(true);
       const result = await supabaseHelpers.signIn('mirko.peters@m365.show', 'Bierjunge123!');
+      
       if (result) {
         setSuccess(true);
         setTimeout(() => {

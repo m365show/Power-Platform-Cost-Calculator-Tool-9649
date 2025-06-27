@@ -22,39 +22,31 @@ export const supabaseHelpers = {
     try {
       console.log('🔄 Attempting to sign in:', email);
       
-      // First check if user exists in our database
-      const { data: userProfile, error: profileError } = await supabase
-        .from('users_ppc_2024')
-        .select('*')
-        .eq('email', email)
-        .eq('is_active', true)
-        .single();
-
-      if (profileError) {
-        console.error('❌ Database query error:', profileError);
-        if (profileError.code === 'PGRST116') {
-          throw new Error('User not found. Please contact an administrator.');
-        }
-        throw new Error('Database error: ' + profileError.message);
-      }
-
-      if (!userProfile) {
-        console.error('❌ User not found in database');
-        throw new Error('User not found or inactive. Please contact an administrator.');
-      }
-
-      console.log('✅ User found in database:', userProfile.name, 'Role:', userProfile.role);
-
-      // Try to sign in with Supabase Auth
+      // First try to authenticate with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password
       });
 
       if (authError) {
-        console.log('⚠️ Auth error, trying to create auth user:', authError.message);
+        console.log('⚠️ Auth error, user may not exist in auth system:', authError.message);
         
-        // If auth user doesn't exist, create it
+        // Check if user exists in our database first
+        const { data: userProfile, error: profileError } = await supabase
+          .from('users_ppc_2024')
+          .select('*')
+          .eq('email', email)
+          .eq('is_active', true)
+          .single();
+
+        if (profileError || !userProfile) {
+          console.error('❌ User not found in database');
+          throw new Error('User not found. Please contact an administrator.');
+        }
+
+        console.log('✅ User found in database, creating auth user:', userProfile.name);
+        
+        // Create auth user since they exist in our database
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
@@ -104,24 +96,59 @@ export const supabaseHelpers = {
         };
       }
 
-      console.log('✅ Auth sign in successful');
+      console.log('✅ Auth sign in successful, fetching user profile');
 
-      // Update profile with auth_id if not set and update last active
-      const updateData = { last_active: new Date().toISOString() };
-      if (!userProfile.auth_id && authData.user) {
-        updateData.auth_id = authData.user.id;
-        userProfile.auth_id = authData.user.id;
+      // Get user profile from database
+      const { data: userProfile, error: profileError } = await supabase
+        .from('users_ppc_2024')
+        .select('*')
+        .eq('auth_id', authData.user.id)
+        .single();
+
+      let profile = userProfile;
+
+      // If not found by auth_id, try by email
+      if (profileError || !userProfile) {
+        console.log('🔄 Profile not found by auth_id, trying by email');
+        
+        const { data: profileByEmail, error: emailError } = await supabase
+          .from('users_ppc_2024')
+          .select('*')
+          .eq('email', email)
+          .eq('is_active', true)
+          .single();
+
+        if (emailError || !profileByEmail) {
+          console.error('❌ No profile found for authenticated user');
+          throw new Error('User profile not found. Please contact an administrator.');
+        }
+
+        profile = profileByEmail;
+        
+        // Update the profile with auth_id
+        await supabase
+          .from('users_ppc_2024')
+          .update({ 
+            auth_id: authData.user.id,
+            last_active: new Date().toISOString()
+          })
+          .eq('id', profile.id);
+        
+        profile.auth_id = authData.user.id;
+      } else {
+        // Update last active
+        await supabase
+          .from('users_ppc_2024')
+          .update({ last_active: new Date().toISOString() })
+          .eq('id', profile.id);
       }
 
-      await supabase
-        .from('users_ppc_2024')
-        .update(updateData)
-        .eq('id', userProfile.id);
+      console.log('✅ User profile loaded:', profile.name, 'Role:', profile.role);
 
       return {
         user: authData.user,
         session: authData.session,
-        profile: userProfile
+        profile: profile
       };
     } catch (error) {
       console.error('❌ Sign in failed:', error);
@@ -189,19 +216,6 @@ export const supabaseHelpers = {
     }
   },
 
-  async resetPassword(email) {
-    try {
-      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      });
-      if (error) throw error;
-      return data;
-    } catch (error) {
-      console.error('❌ Reset password error:', error);
-      throw error;
-    }
-  },
-
   async getCurrentUser() {
     try {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -218,7 +232,6 @@ export const supabaseHelpers = {
 
       // Get user profile by auth_id first, then by email
       let profile = null;
-      let profileError = null;
 
       // Try to find by auth_id
       const { data: profileByAuthId, error: authIdError } = await supabase
@@ -227,26 +240,17 @@ export const supabaseHelpers = {
         .eq('auth_id', user.id)
         .single();
 
-      if (authIdError && authIdError.code !== 'PGRST116') {
-        console.error('❌ Profile fetch by auth_id error:', authIdError);
-      } else if (profileByAuthId) {
+      if (!authIdError && profileByAuthId) {
         profile = profileByAuthId;
-      }
-
-      // If not found by auth_id, try by email
-      if (!profile) {
+      } else {
+        // If not found by auth_id, try by email
         const { data: profileByEmail, error: emailError } = await supabase
           .from('users_ppc_2024')
           .select('*')
           .eq('email', user.email)
           .single();
 
-        if (emailError && emailError.code !== 'PGRST116') {
-          console.error('❌ Profile fetch by email error:', emailError);
-          return { ...user, profile: null };
-        }
-
-        if (profileByEmail) {
+        if (!emailError && profileByEmail) {
           profile = profileByEmail;
           
           // Update the profile with auth_id
@@ -269,6 +273,58 @@ export const supabaseHelpers = {
     } catch (error) {
       console.error('❌ Get current user error:', error);
       return null;
+    }
+  },
+
+  // Create Super Admin function for initialization
+  async createSuperAdmin() {
+    try {
+      console.log('🔄 Creating Super Admin account...');
+      
+      const superAdminData = {
+        name: 'Mirko Peters',
+        email: 'mirko.peters@m365.show',
+        password: 'Bierjunge123!',
+        role: 'SUPER_ADMIN',
+        company: 'M365 Show',
+        department: 'Administration'
+      };
+
+      // Check if already exists
+      const { data: existing } = await supabase
+        .from('users_ppc_2024')
+        .select('*')
+        .eq('email', superAdminData.email)
+        .single();
+
+      if (existing) {
+        console.log('✅ Super Admin already exists');
+        return existing;
+      }
+
+      // Create the super admin
+      const result = await this.signUp(superAdminData);
+      console.log('✅ Super Admin created successfully');
+      return result;
+    } catch (error) {
+      console.error('❌ Create Super Admin failed:', error);
+      throw error;
+    }
+  },
+
+  // Initialize database with proper structure
+  async initializeDatabase() {
+    try {
+      console.log('🔄 Initializing database...');
+      
+      // The database structure is already created via SQL
+      // Just ensure the predefined users exist
+      await this.initializePredefinedUsers();
+      
+      console.log('✅ Database initialization complete');
+    } catch (error) {
+      console.error('❌ Database initialization failed:', error);
+      throw error;
     }
   },
 
@@ -299,52 +355,18 @@ export const supabaseHelpers = {
       for (const userData of predefinedUsers) {
         try {
           // Check if user exists in database
-          const { data: existingUser, error: checkError } = await supabase
+          const { data: existingUser } = await supabase
             .from('users_ppc_2024')
             .select('*')
             .eq('email', userData.email)
             .single();
 
-          if (checkError && checkError.code !== 'PGRST116') {
-            console.error(`❌ Error checking user ${userData.email}:`, checkError);
-            continue;
-          }
-
           if (existingUser) {
             console.log(`✅ User ${userData.email} already exists in database`);
-            
-            // Try to create auth user if missing auth_id
-            if (!existingUser.auth_id) {
-              console.log(`🔄 Creating auth user for ${userData.email}`);
-              try {
-                const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-                  email: userData.email,
-                  password: userData.password,
-                  user_metadata: {
-                    name: userData.name,
-                    role: userData.role
-                  }
-                });
-
-                if (authError && !authError.message.includes('already')) {
-                  console.error(`❌ Auth creation error for ${userData.email}:`, authError);
-                } else if (authData.user) {
-                  // Update profile with auth_id
-                  await supabase
-                    .from('users_ppc_2024')
-                    .update({ auth_id: authData.user.id })
-                    .eq('id', existingUser.id);
-                  
-                  console.log(`✅ Auth user created for ${userData.email}`);
-                }
-              } catch (authError) {
-                console.log(`⚠️ Auth user may already exist for ${userData.email}`);
-              }
-            }
             continue;
           }
 
-          // User doesn't exist, create both profile and auth user
+          // User doesn't exist, create them
           console.log(`🔄 Creating new user ${userData.email}`);
           await this.signUp(userData);
           console.log(`✅ Created user: ${userData.email}`);
@@ -537,8 +559,8 @@ export const supabaseHelpers = {
   async getEstimateStats() {
     try {
       const [estimatesResult, anonymousResult, consultationResult] = await Promise.all([
-        supabase.from('estimates_ppc_2024').select('status, cost_min, cost_max, complexity, created_at, consultant_requested'),
-        supabase.from('anonymous_estimates_ppc_2024').select('cost_min, cost_max, complexity, created_at, consultant_requested'),
+        supabase.from('estimates_ppc_2024').select('status, cost_min, cost_max, complexity, created_at'),
+        supabase.from('anonymous_estimates_ppc_2024').select('cost_min, cost_max, complexity, created_at'),
         supabase.from('consultation_requests_ppc_2024').select('status, created_at, urgency')
       ]);
 
@@ -553,7 +575,6 @@ export const supabaseHelpers = {
         totalRegistered: estimates.length,
         totalAnonymous: anonymousEstimates.length,
         completed: estimates.filter(e => e.status === 'completed').length,
-        consultationRequested: allEstimates.filter(e => e.consultant_requested).length,
         totalValue: allEstimates.reduce((sum, e) => sum + (e.cost_max || 0), 0),
         avgValue: allEstimates.length > 0 ? allEstimates.reduce((sum, e) => sum + (e.cost_max || 0), 0) / allEstimates.length : 0,
         complexityBreakdown: allEstimates.reduce((acc, e) => {
@@ -578,7 +599,6 @@ export const supabaseHelpers = {
         totalRegistered: 0,
         totalAnonymous: 0,
         completed: 0,
-        consultationRequested: 0,
         totalValue: 0,
         avgValue: 0,
         complexityBreakdown: {},
@@ -596,7 +616,7 @@ export const supabaseHelpers = {
 // Initialize predefined users when the module loads
 setTimeout(() => {
   supabaseHelpers.initializePredefinedUsers();
-}, 3000);
+}, 1000);
 
 export default supabase;
 export { supabase };
