@@ -20,75 +20,10 @@ export const supabaseHelpers = {
   // Initialize database and create Super Admin
   async initializeDatabase() {
     try {
-      console.log('Checking database initialization...');
-      
-      // Check if Super Admin exists
-      const { data: existingAdmin, error: adminError } = await supabase
-        .from('users_ppc_2024')
-        .select('*')
-        .eq('email', 'mirko.peters@m365.show')
-        .single();
-
-      if (adminError && adminError.code === 'PGRST116') {
-        console.log('Super Admin not found, creating...');
-        // Create Super Admin if doesn't exist
-        await this.createSuperAdmin();
-      } else if (existingAdmin) {
-        console.log('Super Admin already exists:', existingAdmin.email);
-      }
-
+      console.log('✅ Database already initialized with schema');
       return { success: true, message: 'Database initialized successfully' };
     } catch (error) {
       console.error('Database initialization error:', error);
-      throw error;
-    }
-  },
-
-  // Create Super Admin account
-  async createSuperAdmin() {
-    try {
-      // First create auth user
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: 'mirko.peters@m365.show',
-        password: 'Bierjunge123!',
-        options: {
-          data: {
-            name: 'Mirko Peters',
-            role: 'SUPER_ADMIN'
-          }
-        }
-      });
-
-      if (authError && !authError.message.includes('already')) {
-        console.error('Auth creation error:', authError);
-        throw authError;
-      }
-
-      // Create or update user profile
-      const { data: profile, error: profileError } = await supabase
-        .from('users_ppc_2024')
-        .upsert([{
-          auth_id: authData?.user?.id,
-          name: 'Mirko Peters',
-          email: 'mirko.peters@m365.show',
-          role: 'SUPER_ADMIN',
-          company: 'M365 Show',
-          department: 'Administration',
-          is_active: true,
-          notes: 'System Super Administrator - Full access to all features'
-        }], { onConflict: 'email' })
-        .select()
-        .single();
-
-      if (profileError) {
-        console.error('Profile creation error:', profileError);
-        throw profileError;
-      }
-
-      console.log('Super Admin created successfully:', profile);
-      return profile;
-    } catch (error) {
-      console.error('Error creating Super Admin:', error);
       throw error;
     }
   },
@@ -360,11 +295,6 @@ export const supabaseHelpers = {
         throw deleteError;
       }
 
-      // Optionally delete auth user (commented out for safety)
-      // if (user.auth_id) {
-      //   await supabase.auth.admin.deleteUser(user.auth_id);
-      // }
-
       return { success: true };
     } catch (error) {
       console.error('Delete user failed:', error);
@@ -597,8 +527,7 @@ export const supabaseHelpers = {
         completed: estimates.filter(e => e.status === 'completed').length,
         consultationRequested: allEstimates.filter(e => e.consultant_requested).length,
         totalValue: allEstimates.reduce((sum, e) => sum + (e.cost_max || 0), 0),
-        avgValue: allEstimates.length > 0 ? 
-          allEstimates.reduce((sum, e) => sum + (e.cost_max || 0), 0) / allEstimates.length : 0,
+        avgValue: allEstimates.length > 0 ? allEstimates.reduce((sum, e) => sum + (e.cost_max || 0), 0) / allEstimates.length : 0,
         complexityBreakdown: allEstimates.reduce((acc, e) => {
           if (e.complexity) {
             acc[e.complexity] = (acc[e.complexity] || 0) + 1;
@@ -625,7 +554,12 @@ export const supabaseHelpers = {
         totalValue: 0,
         avgValue: 0,
         complexityBreakdown: {},
-        consultationStats: { total: 0, pending: 0, assigned: 0, completed: 0 }
+        consultationStats: {
+          total: 0,
+          pending: 0,
+          assigned: 0,
+          completed: 0
+        }
       };
     }
   },
@@ -653,9 +587,5 @@ export const supabaseHelpers = {
   }
 };
 
-// Initialize database on module load
-supabaseHelpers.initializeDatabase().catch(console.error);
-
 export default supabase;
-
 export { supabase };

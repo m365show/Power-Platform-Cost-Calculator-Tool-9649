@@ -25,7 +25,7 @@ function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    
+
     const result = await login(formData.email, formData.password);
     if (result.success) {
       navigate('/dashboard');
@@ -56,6 +56,19 @@ function Login() {
     setError('');
   };
 
+  // Quick login buttons for testing
+  const quickLogin = async (email, password) => {
+    setFormData({ email, password });
+    setError('');
+    
+    const result = await login(email, password);
+    if (result.success) {
+      navigate('/dashboard');
+    } else {
+      setError(result.error || 'Login failed');
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 via-white to-accent-50">
       <motion.div
@@ -72,11 +85,34 @@ function Login() {
             </h2>
             <p className="text-gray-600">
               {showForgotPassword 
-                ? 'Enter your email to receive password reset instructions'
+                ? 'Enter your email to receive password reset instructions' 
                 : 'Sign in to your Power Platform Calculator account'
               }
             </p>
           </div>
+
+          {/* Quick Login Buttons for Testing */}
+          {!showForgotPassword && (
+            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm text-blue-800 mb-3 font-medium">Quick Login (Testing):</p>
+              <div className="space-y-2">
+                <button
+                  onClick={() => quickLogin('mirko.peters@m365.show', 'Bierjunge123!')}
+                  className="w-full text-sm bg-red-100 hover:bg-red-200 text-red-800 px-3 py-2 rounded transition-colors"
+                  disabled={loading}
+                >
+                  Login as Super Admin (Mirko Peters)
+                </button>
+                <button
+                  onClick={() => quickLogin('marcel.broschk@cgi.com', 'marcel123!')}
+                  className="w-full text-sm bg-blue-100 hover:bg-blue-200 text-blue-800 px-3 py-2 rounded transition-colors"
+                  disabled={loading}
+                >
+                  Login as Manager (Marcel Broschk)
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Error Message */}
           {error && (

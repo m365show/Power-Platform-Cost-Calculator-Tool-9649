@@ -25,8 +25,8 @@ function Navigation() {
     { path: '/users', label: 'Users', icon: FiUsers, permission: 'manage_users' },
   ];
 
-  const navItems = isAuthenticated 
-    ? [...publicNavItems, ...privateNavItems.filter(item => !item.permission || hasPermission(item.permission))]
+  const navItems = isAuthenticated
+    ? [...publicNavItems, ...privateNavItems.filter(item => !item.permission || hasPermission?.(item.permission))]
     : publicNavItems;
 
   const handleNavigation = (path) => {
