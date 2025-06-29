@@ -22,7 +22,7 @@ export { supabase };
     // Create Super Admin
     const superAdminEmail = 'mirko.peters@m365.show';
     const superAdminPassword = 'Bierjunge123!';
-    
+
     // Check if Super Admin exists
     const { data: existingSuperAdmin, error: fetchError } = await supabase
       .from('users_ppc_2024')
@@ -48,14 +48,23 @@ export { supabase };
       if (authError && !authError.message.includes('already')) {
         console.error('❌ Super Admin auth creation error:', authError);
       } else {
-        // Update the profile with auth_id
-        const { error: updateError } = await supabase
+        // Create profile
+        const { data: profileData, error: profileError } = await supabase
           .from('users_ppc_2024')
-          .update({ auth_id: authData?.user?.id })
-          .eq('email', superAdminEmail);
+          .insert([{
+            auth_id: authData?.user?.id,
+            name: 'Mirko Peters',
+            email: superAdminEmail,
+            role: 'SUPER_ADMIN',
+            company: 'M365 Show',
+            department: 'Administration',
+            is_active: true
+          }])
+          .select()
+          .single();
 
-        if (updateError) {
-          console.error('❌ Super Admin profile update error:', updateError);
+        if (profileError) {
+          console.error('❌ Super Admin profile creation error:', profileError);
         } else {
           console.log('✅ Super Admin created successfully:', superAdminEmail);
         }
@@ -88,7 +97,7 @@ export { supabase };
     // Create Manager
     const managerEmail = 'marcel.broschk@cgi.com';
     const managerPassword = 'marcel123!';
-    
+
     const { data: existingManager, error: managerFetchError } = await supabase
       .from('users_ppc_2024')
       .select('id, auth_id')
@@ -112,14 +121,23 @@ export { supabase };
       if (managerAuthError && !managerAuthError.message.includes('already')) {
         console.error('❌ Manager auth creation error:', managerAuthError);
       } else {
-        // Update the profile with auth_id
-        const { error: managerUpdateError } = await supabase
+        // Create profile
+        const { data: managerProfileData, error: managerProfileError } = await supabase
           .from('users_ppc_2024')
-          .update({ auth_id: managerAuthData?.user?.id })
-          .eq('email', managerEmail);
+          .insert([{
+            auth_id: managerAuthData?.user?.id,
+            name: 'Marcel Broschk',
+            email: managerEmail,
+            role: 'MANAGER',
+            company: 'CGI',
+            department: 'Consulting',
+            is_active: true
+          }])
+          .select()
+          .single();
 
-        if (managerUpdateError) {
-          console.error('❌ Manager profile update error:', managerUpdateError);
+        if (managerProfileError) {
+          console.error('❌ Manager profile creation error:', managerProfileError);
         } else {
           console.log('✅ Manager created successfully:', managerEmail);
         }

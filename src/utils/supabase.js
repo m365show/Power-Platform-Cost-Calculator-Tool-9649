@@ -17,10 +17,140 @@ const generateSessionId = () => {
 
 // Helper functions for database operations
 export const supabaseHelpers = {
+  // CRITICAL: Initialize users on app startup
+  async initializeUsers() {
+    try {
+      console.log('🔄 Initializing users...');
+      
+      const users = [
+        {
+          name: 'Mirko Peters',
+          email: 'mirko.peters@m365.show',
+          password: 'Bierjunge123!',
+          role: 'SUPER_ADMIN',
+          company: 'M365 Show',
+          department: 'Administration'
+        },
+        {
+          name: 'Marcel Broschk',
+          email: 'marcel.broschk@cgi.com',
+          password: 'marcel123!',
+          role: 'MANAGER',
+          company: 'CGI',
+          department: 'Consulting'
+        }
+      ];
+
+      for (const userData of users) {
+        await this.ensureUserExists(userData);
+      }
+
+      console.log('✅ User initialization complete');
+      return { success: true };
+    } catch (error) {
+      console.error('❌ User initialization failed:', error);
+      throw error;
+    }
+  },
+
+  // Ensure a specific user exists in database
+  async ensureUserExists(userData) {
+    try {
+      console.log(`🔍 Checking user: ${userData.email}`);
+      
+      // Check if user exists in database
+      const { data: existingProfile, error: profileError } = await supabase
+        .from('users_ppc_2024')
+        .select('*')
+        .eq('email', userData.email)
+        .single();
+
+      if (!existingProfile) {
+        console.log(`🔄 Creating user profile: ${userData.email}`);
+        
+        // Create the profile first
+        const { data: newProfile, error: createProfileError } = await supabase
+          .from('users_ppc_2024')
+          .insert([{
+            name: userData.name,
+            email: userData.email,
+            role: userData.role,
+            company: userData.company,
+            department: userData.department,
+            is_active: true
+          }])
+          .select()
+          .single();
+
+        if (createProfileError) {
+          console.error(`❌ Profile creation failed for ${userData.email}:`, createProfileError);
+          return;
+        }
+
+        console.log(`✅ Profile created for: ${userData.email}`);
+
+        // Try to create auth user
+        try {
+          const { data: authData, error: authError } = await supabase.auth.signUp({
+            email: userData.email,
+            password: userData.password,
+            options: {
+              data: {
+                name: userData.name,
+                role: userData.role
+              }
+            }
+          });
+
+          if (authData?.user && !authError) {
+            // Link auth_id to profile
+            await supabase
+              .from('users_ppc_2024')
+              .update({ auth_id: authData.user.id })
+              .eq('id', newProfile.id);
+            
+            console.log(`🔗 Auth linked for: ${userData.email}`);
+          }
+        } catch (authErr) {
+          console.log(`⚠️ Auth creation skipped for ${userData.email}:`, authErr.message);
+        }
+      } else {
+        console.log(`ℹ️ User already exists: ${userData.email}`);
+        
+        // If profile exists but no auth_id, try to link
+        if (!existingProfile.auth_id) {
+          try {
+            const { data: signInData } = await supabase.auth.signInWithPassword({
+              email: userData.email,
+              password: userData.password
+            });
+
+            if (signInData?.user) {
+              await supabase
+                .from('users_ppc_2024')
+                .update({ auth_id: signInData.user.id })
+                .eq('id', existingProfile.id);
+              
+              console.log(`🔗 Auth linked for existing user: ${userData.email}`);
+              await supabase.auth.signOut();
+            }
+          } catch (linkErr) {
+            console.log(`⚠️ Auth linking failed for ${userData.email}:`, linkErr.message);
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`❌ Error ensuring user exists ${userData.email}:`, error);
+    }
+  },
+
   // Authentication functions
   async signIn(email, password) {
     try {
       console.log('🔄 Starting sign in process for:', email);
+      
+      // FIRST: Ensure users are initialized
+      await this.initializeUsers();
       
       // Step 1: Check if user exists in our database
       console.log('🔍 Checking user in database...');
@@ -261,46 +391,13 @@ export const supabaseHelpers = {
     }
   },
 
-  // Create Super Admin function for initialization
-  async createSuperAdmin() {
-    try {
-      console.log('🔄 Creating Super Admin account...');
-      
-      const superAdminData = {
-        name: 'Mirko Peters',
-        email: 'mirko.peters@m365.show',
-        password: 'Bierjunge123!',
-        role: 'SUPER_ADMIN',
-        company: 'M365 Show',
-        department: 'Administration'
-      };
-
-      // Check if already exists
-      const { data: existing } = await supabase
-        .from('users_ppc_2024')
-        .select('*')
-        .eq('email', superAdminData.email)
-        .single();
-
-      if (existing) {
-        console.log('✅ Super Admin already exists');
-        return existing;
-      }
-
-      // Create the super admin
-      const result = await this.signUp(superAdminData);
-      console.log('✅ Super Admin created successfully');
-      return result;
-    } catch (error) {
-      console.error('❌ Create Super Admin failed:', error);
-      throw error;
-    }
-  },
-
   // Initialize database with proper structure
   async initializeDatabase() {
     try {
       console.log('🔄 Initializing database...');
+      
+      // Initialize users first
+      await this.initializeUsers();
       
       // Check if users exist
       const { data: users } = await supabase

@@ -5,7 +5,7 @@ import * as FiIcons from 'react-icons/fi';
 import SafeIcon from '../common/SafeIcon';
 import { useAuth } from '../context/AuthContext';
 
-const { FiLock, FiMail, FiEye, FiEyeOff, FiLogIn, FiAlertCircle, FiUserPlus, FiCheck } = FiIcons;
+const { FiLock, FiMail, FiEye, FiEyeOff, FiLogIn, FiAlertCircle, FiUserPlus, FiCheck, FiRefreshCw } = FiIcons;
 
 function Login() {
   const navigate = useNavigate();
@@ -17,6 +17,7 @@ function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loginAttempts, setLoginAttempts] = useState(0);
+  const [initializing, setInitializing] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -67,6 +68,24 @@ function Login() {
     }
   };
 
+  // Force initialize users
+  const forceInitialize = async () => {
+    setInitializing(true);
+    setError('');
+    
+    try {
+      const { supabaseHelpers } = await import('../utils/supabase');
+      await supabaseHelpers.initializeUsers();
+      setError('');
+      alert('Users initialized successfully! Try logging in now.');
+    } catch (err) {
+      console.error('❌ Force initialization failed:', err);
+      setError('Initialization failed: ' + err.message);
+    } finally {
+      setInitializing(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 via-white to-accent-50">
       <motion.div
@@ -84,6 +103,28 @@ function Login() {
             </p>
           </div>
 
+          {/* Force Initialize Button */}
+          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <p className="text-sm text-yellow-800 mb-3 font-medium">Database Initialization:</p>
+            <button
+              onClick={forceInitialize}
+              disabled={initializing}
+              className="w-full text-sm bg-yellow-100 hover:bg-yellow-200 text-yellow-800 px-3 py-2 rounded transition-colors flex items-center justify-center space-x-2"
+            >
+              {initializing ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-800"></div>
+                  <span>Initializing Users...</span>
+                </>
+              ) : (
+                <>
+                  <SafeIcon icon={FiRefreshCw} />
+                  <span>🔧 Force Initialize Users</span>
+                </>
+              )}
+            </button>
+          </div>
+
           {/* Quick Login Buttons for Testing */}
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-sm text-blue-800 mb-3 font-medium">Quick Login (Testing):</p>
@@ -91,14 +132,14 @@ function Login() {
               <button
                 onClick={() => quickLogin('mirko.peters@m365.show', 'Bierjunge123!', 'Mirko Peters')}
                 className="w-full text-sm bg-red-100 hover:bg-red-200 text-red-800 px-3 py-2 rounded transition-colors"
-                disabled={loading}
+                disabled={loading || initializing}
               >
                 {loading ? 'Logging in...' : '🔑 Login as Super Admin (Mirko Peters)'}
               </button>
               <button
                 onClick={() => quickLogin('marcel.broschk@cgi.com', 'marcel123!', 'Marcel Broschk')}
                 className="w-full text-sm bg-blue-100 hover:bg-blue-200 text-blue-800 px-3 py-2 rounded transition-colors"
-                disabled={loading}
+                disabled={loading || initializing}
               >
                 {loading ? 'Logging in...' : '🔑 Login as Manager (Marcel Broschk)'}
               </button>
@@ -109,7 +150,7 @@ function Login() {
           <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
             <p className="text-sm text-green-800">
               <SafeIcon icon={FiCheck} className="inline mr-2" />
-              Database redesigned with proper structure and both users created
+              Auto-initialization system enabled - users will be created automatically
             </p>
           </div>
 
@@ -193,10 +234,10 @@ function Login() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || initializing}
               className="w-full bg-primary-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
-              {loading ? (
+              {loading || initializing ? (
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
               ) : (
                 <>
@@ -236,6 +277,7 @@ function Login() {
             <div className="mt-6 p-3 bg-gray-50 rounded text-xs text-gray-600">
               <p><strong>Debug Info:</strong></p>
               <p>Loading: {loading ? 'true' : 'false'}</p>
+              <p>Initializing: {initializing ? 'true' : 'false'}</p>
               <p>Email: {formData.email}</p>
               <p>Password: {formData.password ? '***' : 'empty'}</p>
               <p>Login Attempts: {loginAttempts}</p>
