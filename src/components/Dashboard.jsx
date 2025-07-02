@@ -5,7 +5,7 @@ import * as FiIcons from 'react-icons/fi';
 import SafeIcon from '../common/SafeIcon';
 import { useAuth } from '../context/AuthContext';
 import { useUserManagement } from '../hooks/useUserManagement';
-import { supabaseHelpers } from '../utils/supabase';
+import { firebaseHelpers } from '../utils/firebase';
 
 const { FiUsers, FiCalculator, FiBarChart3, FiSettings, FiLogOut, FiTrendingUp, FiDollarSign, FiClock, FiShield, FiEye, FiDownload } = FiIcons;
 
@@ -31,20 +31,20 @@ function Dashboard() {
       // Load estimates based on user role
       let estimatesData = [];
       if (hasPermission('view_all_estimates')) {
-        estimatesData = await supabaseHelpers.getEstimates(); // All estimates
+        estimatesData = await firebaseHelpers.getEstimates(); // All estimates
       } else {
-        estimatesData = await supabaseHelpers.getEstimates(profile?.id); // Own estimates only
+        estimatesData = await firebaseHelpers.getEstimates(profile?.id); // Own estimates only
       }
       
       setEstimates(estimatesData);
       
       // Calculate stats
       if (hasPermission('view_analytics')) {
-        const statsData = await supabaseHelpers.getEstimateStats();
+        const statsData = await firebaseHelpers.getEstimateStats();
         setStats(statsData);
       }
     } catch (error) {
-      console.error('Error loading dashboard data:', error);
+      console.error('Error loading Firebase dashboard data:', error);
     } finally {
       setLoading(false);
     }
@@ -67,14 +67,14 @@ function Dashboard() {
   const dashboardCards = [
     {
       title: 'My Estimates',
-      value: estimates.filter(e => e.user_id === profile?.id).length.toString(),
+      value: estimates.filter(e => e.userId === profile?.id).length.toString(),
       change: '+12%',
       icon: FiCalculator,
       color: 'blue'
     },
     {
       title: 'Total Value',
-      value: `$${estimates.filter(e => e.user_id === profile?.id).reduce((sum, e) => sum + e.cost_max, 0).toLocaleString()}`,
+      value: `$${estimates.filter(e => e.userId === profile?.id).reduce((sum, e) => sum + (e.costMax || 0), 0).toLocaleString()}`,
       change: '+18%',
       icon: FiDollarSign,
       color: 'green'
@@ -124,13 +124,12 @@ function Dashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
-              <div className="text-2xl">⚡</div>
+              <div className="text-2xl">🔥</div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">Power Platform Dashboard</h1>
+                <h1 className="text-xl font-bold text-gray-900">Firebase Power Platform Dashboard</h1>
                 <p className="text-sm text-gray-600">Welcome back, {profile?.name}</p>
               </div>
             </div>
-
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
                 <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
@@ -225,7 +224,7 @@ function Dashboard() {
                   <SafeIcon icon={FiBarChart3} className="text-green-600" />
                   <div className="text-left">
                     <p className="font-medium text-gray-900">View Estimates</p>
-                    <p className="text-sm text-gray-600">Review saved estimates</p>
+                    <p className="text-sm text-gray-600">Review saved Firebase estimates</p>
                   </div>
                 </button>
 
@@ -246,26 +245,28 @@ function Dashboard() {
 
             {/* Recent Activity */}
             <div className="bg-white rounded-lg shadow-sm p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Recent Estimates</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Recent Firebase Estimates</h3>
               {loading ? (
                 <div className="text-center py-4">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
                   <p className="text-gray-600 mt-2">Loading...</p>
                 </div>
-              ) : estimates.slice(0, 5).map((estimate) => (
-                <div key={estimate.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg mb-3">
-                  <SafeIcon icon={FiCalculator} className="text-blue-600" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">
-                      {estimate.company_name} - ${estimate.cost_min.toLocaleString()} - ${estimate.cost_max.toLocaleString()}
-                    </p>
-                    <p className="text-xs text-gray-600">
-                      {estimate.user?.name} • {new Date(estimate.created_at).toLocaleDateString()}
-                    </p>
+              ) : (
+                estimates.slice(0, 5).map((estimate) => (
+                  <div key={estimate.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg mb-3">
+                    <SafeIcon icon={FiCalculator} className="text-blue-600" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">
+                        {estimate.companyName} - ${estimate.costMin?.toLocaleString()} - ${estimate.costMax?.toLocaleString()}
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        {estimate.user?.name} • {estimate.createdAt ? new Date(estimate.createdAt.seconds * 1000).toLocaleDateString() : 'Unknown date'}
+                      </p>
+                    </div>
+                    <span className="text-xs text-gray-500">{estimate.status || 'completed'}</span>
                   </div>
-                  <span className="text-xs text-gray-500">{estimate.status}</span>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         )}
@@ -274,7 +275,7 @@ function Dashboard() {
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-medium text-gray-900">
-                {hasPermission('view_all_estimates') ? 'All Estimates' : 'My Estimates'}
+                {hasPermission('view_all_estimates') ? 'All Firebase Estimates' : 'My Firebase Estimates'}
               </h3>
               <button
                 onClick={() => navigate('/calculator')}
@@ -287,7 +288,7 @@ function Dashboard() {
             {loading ? (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-                <p className="text-gray-600">Loading estimates...</p>
+                <p className="text-gray-600">Loading Firebase estimates...</p>
               </div>
             ) : estimates.length === 0 ? (
               <div className="text-center py-8">
@@ -334,17 +335,17 @@ function Dashboard() {
                       <tr key={estimate.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div>
-                            <div className="text-sm font-medium text-gray-900">{estimate.company_name}</div>
-                            <div className="text-sm text-gray-500">{estimate.contact_name}</div>
+                            <div className="text-sm font-medium text-gray-900">{estimate.companyName}</div>
+                            <div className="text-sm text-gray-500">{estimate.contactName}</div>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                            {estimate.app_type}
+                            {estimate.appType}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          ${estimate.cost_min.toLocaleString()} - ${estimate.cost_max.toLocaleString()}
+                          ${estimate.costMin?.toLocaleString()} - ${estimate.costMax?.toLocaleString()}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {estimate.timeline}
@@ -353,7 +354,7 @@ function Dashboard() {
                           {estimate.user?.name || 'Unknown'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(estimate.created_at).toLocaleDateString()}
+                          {estimate.createdAt ? new Date(estimate.createdAt.seconds * 1000).toLocaleDateString() : 'Unknown date'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex items-center justify-end space-x-2">
@@ -364,9 +365,9 @@ function Dashboard() {
                             >
                               <SafeIcon icon={FiEye} />
                             </button>
-                            {estimate.pdf_url && (
+                            {estimate.pdfUrl && (
                               <button
-                                onClick={() => handleDownload(estimate.pdf_url, `${estimate.company_name}-Estimate.pdf`)}
+                                onClick={() => handleDownload(estimate.pdfUrl, `${estimate.companyName}-Estimate.pdf`)}
                                 className="text-green-600 hover:text-green-900"
                                 title="Download PDF"
                               >
@@ -395,7 +396,7 @@ function Dashboard() {
                 Manage Users
               </button>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="text-center p-4 bg-blue-50 rounded-lg">
                 <SafeIcon icon={FiUsers} className="text-3xl text-blue-600 mx-auto mb-2" />
@@ -418,7 +419,7 @@ function Dashboard() {
 
         {activeTab === 'settings' && hasPermission('system_settings') && (
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-6">System Settings</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-6">Firebase System Settings</h3>
             <div className="space-y-6">
               <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
                 <div>
@@ -431,7 +432,6 @@ function Dashboard() {
                   defaultChecked
                 />
               </div>
-              
               <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
                 <div>
                   <h4 className="font-medium text-gray-900">Auto-backup</h4>
@@ -443,7 +443,6 @@ function Dashboard() {
                   defaultChecked
                 />
               </div>
-              
               <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
                 <div>
                   <h4 className="font-medium text-gray-900">Analytics Tracking</h4>

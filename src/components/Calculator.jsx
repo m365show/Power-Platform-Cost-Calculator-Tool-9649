@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { calculateCost } from '../utils/costCalculator';
 import { generatePitchDeck } from '../utils/pitchDeckGenerator';
 import { sendEmailNotification } from '../utils/emailService';
-import { supabaseHelpers } from '../utils/supabase';
+import { firebaseHelpers } from '../utils/firebase';
 
 const { FiArrowLeft, FiArrowRight, FiUpload, FiX, FiCheck, FiInfo, FiUsers, FiDatabase, FiSmartphone, FiGlobe, FiShield, FiMail, FiLinkedin, FiDownload } = FiIcons;
 
@@ -21,6 +21,7 @@ function Calculator() {
   const [processingStatus, setProcessingStatus] = useState('');
   const [errors, setErrors] = useState({});
   const [showDownloadOption, setShowDownloadOption] = useState(false);
+  
   const totalSteps = 6;
 
   // ... (keep all the existing arrays: industries, companySizes, appTypes, etc.)
@@ -174,7 +175,7 @@ function Calculator() {
 
   const handleSubmit = async () => {
     setIsProcessing(true);
-
+    
     try {
       // Step 1: Calculate cost estimate
       setProcessingStatus('Calculating cost estimate...');
@@ -186,43 +187,43 @@ function Calculator() {
       const pitchDeck = await generatePitchDeck(state.formData, estimate);
       dispatch({ type: 'SET_PITCH_DECK', payload: pitchDeck });
 
-      // Step 3: Save to database (both authenticated and anonymous users)
+      // Step 3: Save to Firebase (both authenticated and anonymous users)
       if (isAuthenticated && profile) {
-        setProcessingStatus('Saving estimate to your account...');
+        setProcessingStatus('Saving estimate to your Firebase account...');
         const estimateData = {
-          user_id: profile.id,
-          company_name: state.formData.companyName,
-          contact_name: state.formData.contactName,
-          business_email: state.formData.businessEmail,
+          userId: profile.id,
+          companyName: state.formData.companyName,
+          contactName: state.formData.contactName,
+          businessEmail: state.formData.businessEmail,
           industry: state.formData.industry,
-          industry_details: state.formData.industryDetails,
-          company_size: state.formData.companySize,
-          company_size_details: state.formData.companySizeDetails,
-          app_type: state.formData.appType,
-          app_type_details: state.formData.appTypeDetails,
-          business_challenges: state.formData.businessChallenges,
-          business_challenges_details: state.formData.businessChallengesDetails,
-          platform_tools: state.formData.platformTools,
-          platform_tools_details: state.formData.platformToolsDetails,
+          industryDetails: state.formData.industryDetails,
+          companySize: state.formData.companySize,
+          companySizeDetails: state.formData.companySizeDetails,
+          appType: state.formData.appType,
+          appTypeDetails: state.formData.appTypeDetails,
+          businessChallenges: state.formData.businessChallenges,
+          businessChallengesDetails: state.formData.businessChallengesDetails,
+          platformTools: state.formData.platformTools,
+          platformToolsDetails: state.formData.platformToolsDetails,
           features: state.formData.features,
-          features_details: state.formData.featuresDetails,
-          user_count: state.formData.userCount,
-          user_count_details: state.formData.userCountDetails,
+          featuresDetails: state.formData.featuresDetails,
+          userCount: state.formData.userCount,
+          userCountDetails: state.formData.userCountDetails,
           budget: state.formData.budget,
-          budget_details: state.formData.budgetDetails,
+          budgetDetails: state.formData.budgetDetails,
           urgency: state.formData.urgency,
-          urgency_details: state.formData.urgencyDetails,
-          additional_requirements: state.formData.additionalRequirements,
-          logo_url: state.formData.logo,
-          cost_min: estimate.cost.min,
-          cost_max: estimate.cost.max,
+          urgencyDetails: state.formData.urgencyDetails,
+          additionalRequirements: state.formData.additionalRequirements,
+          logoUrl: state.formData.logo,
+          costMin: estimate.cost.min,
+          costMax: estimate.cost.max,
           timeline: estimate.timeline,
           complexity: estimate.complexity,
-          pdf_url: pitchDeck,
+          pdfUrl: pitchDeck,
           status: 'completed'
         };
 
-        const savedEstimate = await supabaseHelpers.saveEstimate(estimateData);
+        const savedEstimate = await firebaseHelpers.saveEstimate(estimateData);
         dispatch({ type: 'SET_SAVED_ESTIMATE', payload: savedEstimate });
       } else {
         // For anonymous users, show download option
@@ -243,13 +244,13 @@ function Calculator() {
       }
 
       // Step 5: Navigate to results
-      setProcessingStatus('Finalizing your estimate...');
+      setProcessingStatus('Finalizing your Firebase estimate...');
       setTimeout(() => {
         navigate('/results');
       }, 1000);
 
     } catch (error) {
-      console.error('Error processing submission:', error);
+      console.error('Error processing Firebase submission:', error);
       setProcessingStatus('Processing completed with warnings');
       
       // Show user-friendly error message
@@ -284,8 +285,8 @@ function Calculator() {
   };
 
   const toggleArrayValue = (array, value) => {
-    const newArray = array.includes(value)
-      ? array.filter(item => item !== value)
+    const newArray = array.includes(value) 
+      ? array.filter(item => item !== value) 
       : [...array, value];
     return newArray;
   };
@@ -303,7 +304,7 @@ function Calculator() {
     navigate('/results');
   };
 
-  // ... (keep the existing renderStep function with all steps)
+  // ... (keep the existing renderStep function with all steps - same as before)
   const renderStep = () => {
     const { formData } = state;
 
@@ -368,8 +369,8 @@ function Calculator() {
                     key={industry.value}
                     onClick={() => updateFormData({ industry: industry.value })}
                     className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                      formData.industry === industry.value
-                        ? 'border-primary-500 bg-primary-50'
+                      formData.industry === industry.value 
+                        ? 'border-primary-500 bg-primary-50' 
                         : 'border-gray-300 hover:border-gray-400'
                     }`}
                   >
@@ -412,8 +413,8 @@ function Calculator() {
                     key={size.value}
                     onClick={() => updateFormData({ companySize: size.value })}
                     className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                      formData.companySize === size.value
-                        ? 'border-primary-500 bg-primary-50'
+                      formData.companySize === size.value 
+                        ? 'border-primary-500 bg-primary-50' 
                         : 'border-gray-300 hover:border-gray-400'
                     }`}
                   >
@@ -466,8 +467,8 @@ function Calculator() {
                     key={type.value}
                     onClick={() => updateFormData({ appType: type.value })}
                     className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                      formData.appType === type.value
-                        ? 'border-primary-500 bg-primary-50'
+                      formData.appType === type.value 
+                        ? 'border-primary-500 bg-primary-50' 
                         : 'border-gray-300 hover:border-gray-400'
                     }`}
                   >
@@ -517,8 +518,8 @@ function Calculator() {
                     key={challenge.value}
                     onClick={() => updateFormData({ businessChallenges: toggleArrayValue(formData.businessChallenges || [], challenge.value) })}
                     className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                      (formData.businessChallenges || []).includes(challenge.value)
-                        ? 'border-primary-500 bg-primary-50'
+                      (formData.businessChallenges || []).includes(challenge.value) 
+                        ? 'border-primary-500 bg-primary-50' 
                         : 'border-gray-300 hover:border-gray-400'
                     }`}
                   >
@@ -569,8 +570,8 @@ function Calculator() {
                   key={tool.value}
                   onClick={() => updateFormData({ platformTools: toggleArrayValue(formData.platformTools || [], tool.value) })}
                   className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                    (formData.platformTools || []).includes(tool.value)
-                      ? 'border-primary-500 bg-primary-50'
+                    (formData.platformTools || []).includes(tool.value) 
+                      ? 'border-primary-500 bg-primary-50' 
                       : 'border-gray-300 hover:border-gray-400'
                   }`}
                 >
@@ -636,8 +637,8 @@ function Calculator() {
                   key={feature.value}
                   onClick={() => updateFormData({ features: toggleArrayValue(formData.features || [], feature.value) })}
                   className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                    (formData.features || []).includes(feature.value)
-                      ? 'border-primary-500 bg-primary-50'
+                    (formData.features || []).includes(feature.value) 
+                      ? 'border-primary-500 bg-primary-50' 
                       : 'border-gray-300 hover:border-gray-400'
                   }`}
                 >
@@ -702,8 +703,8 @@ function Calculator() {
                     key={count.value}
                     onClick={() => updateFormData({ userCount: count.value })}
                     className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                      formData.userCount === count.value
-                        ? 'border-primary-500 bg-primary-50'
+                      formData.userCount === count.value 
+                        ? 'border-primary-500 bg-primary-50' 
                         : 'border-gray-300 hover:border-gray-400'
                     }`}
                   >
@@ -746,8 +747,8 @@ function Calculator() {
                     key={budget.value}
                     onClick={() => updateFormData({ budget: budget.value })}
                     className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                      formData.budget === budget.value
-                        ? 'border-primary-500 bg-primary-50'
+                      formData.budget === budget.value 
+                        ? 'border-primary-500 bg-primary-50' 
                         : 'border-gray-300 hover:border-gray-400'
                     }`}
                   >
@@ -800,8 +801,8 @@ function Calculator() {
                     key={option.value}
                     onClick={() => updateFormData({ urgency: option.value })}
                     className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                      formData.urgency === option.value
-                        ? 'border-primary-500 bg-primary-50'
+                      formData.urgency === option.value 
+                        ? 'border-primary-500 bg-primary-50' 
                         : 'border-gray-300 hover:border-gray-400'
                     }`}
                   >
@@ -899,6 +900,8 @@ function Calculator() {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Power Platform Cost Calculator</h1>
           <p className="text-gray-600">Step {currentStep} of {totalSteps}</p>
+          <p className="text-sm text-orange-600 mt-1">🔥 Now powered by Firebase!</p>
+          
           {isProcessing && (
             <div className="mt-4">
               <div className="flex items-center justify-center space-x-2 text-primary-600">
@@ -927,7 +930,7 @@ function Calculator() {
             <div className="flex items-center space-x-2">
               <SafeIcon icon={FiCheck} className="text-green-600" />
               <span className="text-sm text-green-800">
-                <strong>Logged in as:</strong> {profile.name} ({profile.role}) - Your estimate will be saved automatically!
+                <strong>Logged in as:</strong> {profile.name} ({profile.role}) - Your estimate will be saved to Firebase automatically! 🔥
               </span>
             </div>
           </div>
@@ -941,12 +944,13 @@ function Calculator() {
               <div className="text-sm text-blue-800">
                 <p><strong>Continue as guest</strong> - You can still download your PDF estimate!</p>
                 <p className="mt-1">
-                  <button 
-                    onClick={() => navigate('/signup')} 
+                  <button
+                    onClick={() => navigate('/signup')}
                     className="text-blue-700 hover:text-blue-900 underline"
                   >
                     Create an account
-                  </button> to save estimates and access additional features.
+                  </button>
+                  {' '}to save estimates to Firebase and access additional features. 🔥
                 </p>
               </div>
             </div>
@@ -1025,8 +1029,8 @@ function Calculator() {
             className="flex items-center space-x-2 px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span>
-              {currentStep === totalSteps
-                ? (isProcessing ? processingStatus || 'Processing...' : 'Get My Estimate')
+              {currentStep === totalSteps 
+                ? (isProcessing ? processingStatus || 'Processing...' : 'Get My Firebase Estimate')
                 : 'Next'
               }
             </span>
@@ -1044,7 +1048,7 @@ function Calculator() {
             {isAuthenticated && profile && (
               <p className="text-sm text-green-600 flex items-center justify-center space-x-2">
                 <SafeIcon icon={FiDatabase} className="text-green-500" />
-                <span>Estimate will be saved to your account for future reference</span>
+                <span>Estimate will be saved to your Firebase account for future reference 🔥</span>
               </p>
             )}
             <div className="flex items-center justify-center space-x-2 text-blue-600">

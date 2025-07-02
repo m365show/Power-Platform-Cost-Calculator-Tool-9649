@@ -5,7 +5,7 @@ import * as FiIcons from 'react-icons/fi';
 import SafeIcon from '../common/SafeIcon';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { supabaseHelpers } from '../utils/supabase';
+import { firebaseHelpers } from '../utils/firebase';
 import ConsultationRequestModal from './ConsultationRequestModal';
 
 const { FiDollarSign, FiClock, FiDownload, FiRefreshCw, FiCheck, FiArrowRight, FiLinkedin, FiEye, FiShare2, FiUserCheck, FiMail } = FiIcons;
@@ -30,10 +30,10 @@ function Results() {
   const loadUserEstimates = async () => {
     try {
       setLoading(true);
-      const estimates = await supabaseHelpers.getEstimates(profile.id);
+      const estimates = await firebaseHelpers.getEstimates(profile.id);
       setUserEstimates(estimates);
     } catch (error) {
-      console.error('Error loading estimates:', error);
+      console.error('Error loading Firebase estimates:', error);
     } finally {
       setLoading(false);
     }
@@ -50,9 +50,9 @@ function Results() {
 
   const handleDownloadAll = () => {
     userEstimates.forEach((estimate, index) => {
-      if (estimate.pdf_url) {
+      if (estimate.pdfUrl) {
         setTimeout(() => {
-          handleDownload(estimate.pdf_url, `${estimate.company_name}-Estimate-${estimate.id.slice(0, 8)}.pdf`);
+          handleDownload(estimate.pdfUrl, `${estimate.companyName}-Estimate-${estimate.id.slice(0, 8)}.pdf`);
         }, index * 500); // Stagger downloads
       }
     });
@@ -65,46 +65,49 @@ function Results() {
 
   const handleViewEstimate = (estimateData) => {
     // Load the estimate data into the app state
-    dispatch({ 
-      type: 'UPDATE_FORM_DATA', 
+    dispatch({
+      type: 'UPDATE_FORM_DATA',
       payload: {
-        companyName: estimateData.company_name,
-        contactName: estimateData.contact_name,
-        businessEmail: estimateData.business_email,
+        companyName: estimateData.companyName,
+        contactName: estimateData.contactName,
+        businessEmail: estimateData.businessEmail,
         industry: estimateData.industry,
-        industryDetails: estimateData.industry_details,
-        companySize: estimateData.company_size,
-        companySizeDetails: estimateData.company_size_details,
-        appType: estimateData.app_type,
-        appTypeDetails: estimateData.app_type_details,
-        businessChallenges: estimateData.business_challenges || [],
-        businessChallengesDetails: estimateData.business_challenges_details,
-        platformTools: estimateData.platform_tools || [],
-        platformToolsDetails: estimateData.platform_tools_details,
+        industryDetails: estimateData.industryDetails,
+        companySize: estimateData.companySize,
+        companySizeDetails: estimateData.companySizeDetails,
+        appType: estimateData.appType,
+        appTypeDetails: estimateData.appTypeDetails,
+        businessChallenges: estimateData.businessChallenges || [],
+        businessChallengesDetails: estimateData.businessChallengesDetails,
+        platformTools: estimateData.platformTools || [],
+        platformToolsDetails: estimateData.platformToolsDetails,
         features: estimateData.features || [],
-        featuresDetails: estimateData.features_details,
-        userCount: estimateData.user_count,
-        userCountDetails: estimateData.user_count_details,
+        featuresDetails: estimateData.featuresDetails,
+        userCount: estimateData.userCount,
+        userCountDetails: estimateData.userCountDetails,
         budget: estimateData.budget,
-        budgetDetails: estimateData.budget_details,
+        budgetDetails: estimateData.budgetDetails,
         urgency: estimateData.urgency,
-        urgencyDetails: estimateData.urgency_details,
-        additionalRequirements: estimateData.additional_requirements,
-        logo: estimateData.logo_url
+        urgencyDetails: estimateData.urgencyDetails,
+        additionalRequirements: estimateData.additionalRequirements,
+        logo: estimateData.logoUrl
       }
     });
-    
-    dispatch({ 
-      type: 'SET_ESTIMATE', 
+
+    dispatch({
+      type: 'SET_ESTIMATE',
       payload: {
-        cost: { min: estimateData.cost_min, max: estimateData.cost_max },
+        cost: {
+          min: estimateData.costMin,
+          max: estimateData.costMax
+        },
         timeline: estimateData.timeline,
         complexity: estimateData.complexity
       }
     });
-    
-    if (estimateData.pdf_url) {
-      dispatch({ type: 'SET_PITCH_DECK', payload: estimateData.pdf_url });
+
+    if (estimateData.pdfUrl) {
+      dispatch({ type: 'SET_PITCH_DECK', payload: estimateData.pdfUrl });
     }
   };
 
@@ -116,46 +119,46 @@ function Results() {
 
       if (!estimateId && !isAuthenticated) {
         // For anonymous users, save the estimate first
-        const anonymousEstimate = await supabaseHelpers.saveAnonymousEstimate({
-          company_name: formData.companyName,
-          contact_name: formData.contactName,
-          business_email: formData.businessEmail,
+        const anonymousEstimate = await firebaseHelpers.saveAnonymousEstimate({
+          companyName: formData.companyName,
+          contactName: formData.contactName,
+          businessEmail: formData.businessEmail,
           industry: formData.industry,
-          industry_details: formData.industryDetails,
-          company_size: formData.companySize,
-          company_size_details: formData.companySizeDetails,
-          app_type: formData.appType,
-          app_type_details: formData.appTypeDetails,
-          business_challenges: formData.businessChallenges,
-          business_challenges_details: formData.businessChallengesDetails,
-          platform_tools: formData.platformTools,
-          platform_tools_details: formData.platformToolsDetails,
+          industryDetails: formData.industryDetails,
+          companySize: formData.companySize,
+          companySizeDetails: formData.companySizeDetails,
+          appType: formData.appType,
+          appTypeDetails: formData.appTypeDetails,
+          businessChallenges: formData.businessChallenges,
+          businessChallengesDetails: formData.businessChallengesDetails,
+          platformTools: formData.platformTools,
+          platformToolsDetails: formData.platformToolsDetails,
           features: formData.features,
-          features_details: formData.featuresDetails,
-          user_count: formData.userCount,
-          user_count_details: formData.userCountDetails,
+          featuresDetails: formData.featuresDetails,
+          userCount: formData.userCount,
+          userCountDetails: formData.userCountDetails,
           budget: formData.budget,
-          budget_details: formData.budgetDetails,
+          budgetDetails: formData.budgetDetails,
           urgency: formData.urgency,
-          urgency_details: formData.urgencyDetails,
-          additional_requirements: formData.additionalRequirements,
-          logo_url: formData.logo,
-          cost_min: estimate.cost.min,
-          cost_max: estimate.cost.max,
+          urgencyDetails: formData.urgencyDetails,
+          additionalRequirements: formData.additionalRequirements,
+          logoUrl: formData.logo,
+          costMin: estimate.cost.min,
+          costMax: estimate.cost.max,
           timeline: estimate.timeline,
           complexity: estimate.complexity,
-          pdf_url: pitchDeck
+          pdfUrl: pitchDeck
         });
         
         estimateId = anonymousEstimate.id;
         isAnonymous = true;
       }
 
-      await supabaseHelpers.requestConsultation(estimateId, consultationData, isAnonymous);
+      await firebaseHelpers.requestConsultation(estimateId, consultationData, isAnonymous);
       setConsultationRequested(true);
       setShowConsultationModal(false);
     } catch (error) {
-      console.error('Error requesting consultation:', error);
+      console.error('Error requesting Firebase consultation:', error);
       alert('Failed to submit consultation request. Please try again.');
     }
   };
@@ -206,7 +209,7 @@ function Results() {
           {isAuthenticated && profile && (
             <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg inline-block">
               <p className="text-sm text-blue-800">
-                <strong>Logged in as:</strong> {profile?.name} ({profile?.role}) - Your estimate has been saved to your account
+                <strong>Logged in as:</strong> {profile?.name} ({profile?.role}) - Your estimate has been saved to Firebase 🔥
               </p>
             </div>
           )}
@@ -235,7 +238,6 @@ function Results() {
                     Based on your specific requirements and complexity
                   </p>
                 </div>
-
                 <div>
                   <div className="flex items-center space-x-3 mb-4">
                     <SafeIcon icon={FiClock} className="text-3xl" />
@@ -268,7 +270,6 @@ function Results() {
                     <p><strong>Users:</strong> {formData.userCount}</p>
                   </div>
                 </div>
-
                 <div>
                   <h4 className="font-semibold text-gray-900 mb-3">Solution Overview</h4>
                   <div className="space-y-2 text-gray-600">
@@ -333,10 +334,7 @@ function Results() {
                   {consultationRequested ? 'Request Sent!' : 'Get Consultation'}
                 </h3>
                 <p className="text-gray-600 mb-4 text-sm">
-                  {consultationRequested 
-                    ? 'We\'ll contact you soon'
-                    : 'Talk to our Power Platform experts'
-                  }
+                  {consultationRequested ? 'We\'ll contact you soon' : 'Talk to our Power Platform experts'}
                 </p>
                 <button
                   onClick={() => setShowConsultationModal(true)}
@@ -381,7 +379,7 @@ function Results() {
                 className="bg-white rounded-xl shadow-lg p-6 mb-8"
               >
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xl font-bold text-gray-900">My Saved Estimates</h3>
+                  <h3 className="text-xl font-bold text-gray-900">My Firebase Estimates</h3>
                   {userEstimates.length > 1 && (
                     <button
                       onClick={handleDownloadAll}
@@ -397,7 +395,7 @@ function Results() {
                 {loading ? (
                   <div className="text-center py-4">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
-                    <p className="text-gray-600 mt-2">Loading estimates...</p>
+                    <p className="text-gray-600 mt-2">Loading Firebase estimates...</p>
                   </div>
                 ) : userEstimates.length === 0 ? (
                   <div className="text-center py-8">
@@ -410,13 +408,13 @@ function Results() {
                       <div key={estimateItem.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <h4 className="font-medium text-gray-900">{estimateItem.company_name}</h4>
-                            <p className="text-sm text-gray-600">{estimateItem.app_type}</p>
+                            <h4 className="font-medium text-gray-900">{estimateItem.companyName}</h4>
+                            <p className="text-sm text-gray-600">{estimateItem.appType}</p>
                             <p className="text-sm font-medium text-green-600">
-                              ${estimateItem.cost_min.toLocaleString()} - ${estimateItem.cost_max.toLocaleString()}
+                              ${estimateItem.costMin?.toLocaleString()} - ${estimateItem.costMax?.toLocaleString()}
                             </p>
                             <p className="text-xs text-gray-500">
-                              {new Date(estimateItem.created_at).toLocaleDateString()}
+                              {estimateItem.createdAt ? new Date(estimateItem.createdAt.seconds * 1000).toLocaleDateString() : 'Unknown date'}
                             </p>
                           </div>
                           <div className="flex flex-col space-y-1 ml-2">
@@ -427,9 +425,9 @@ function Results() {
                             >
                               <SafeIcon icon={FiEye} className="text-sm" />
                             </button>
-                            {estimateItem.pdf_url && (
+                            {estimateItem.pdfUrl && (
                               <button
-                                onClick={() => handleDownload(estimateItem.pdf_url, `${estimateItem.company_name}-Estimate.pdf`)}
+                                onClick={() => handleDownload(estimateItem.pdfUrl, `${estimateItem.companyName}-Estimate.pdf`)}
                                 className="text-green-600 hover:text-green-700 p-1"
                                 title="Download PDF"
                               >

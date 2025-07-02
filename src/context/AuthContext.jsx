@@ -1,25 +1,65 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
-import { supabaseHelpers } from '../utils/supabase';
-import { supabase } from '../utils/supabase';
+import { firebaseHelpers } from '../utils/firebase';
 
 const AuthContext = createContext();
 
+const initialState = {
+  isAuthenticated: false,
+  user: null,
+  profile: null,
+  loading: true,
+  error: null
+};
+
+function authReducer(state, action) {
+  switch (action.type) {
+    case 'AUTH_LOADING':
+      return {
+        ...state,
+        loading: action.payload,
+        error: null
+      };
+    case 'AUTH_SUCCESS':
+      return {
+        ...state,
+        isAuthenticated: true,
+        user: action.payload.user,
+        profile: action.payload.profile,
+        loading: false,
+        error: null
+      };
+    case 'AUTH_ERROR':
+      return {
+        ...state,
+        isAuthenticated: false,
+        user: null,
+        profile: null,
+        loading: false,
+        error: action.payload
+      };
+    case 'AUTH_LOGOUT':
+      return {
+        ...initialState,
+        loading: false
+      };
+    default:
+      return state;
+  }
+}
+
+// Role-based permissions
 const PERMISSIONS = {
   SUPER_ADMIN: [
     'view_all_estimates',
     'manage_users',
     'create_users',
-    'edit_users',
+    'edit_users', 
     'delete_users',
+    'invite_users',
     'export_data',
     'system_settings',
     'view_analytics',
-    'approve_estimates',
-    'create_estimates',
-    'edit_estimates',
-    'delete_estimates',
-    'manage_consultations',
-    'view_all_consultations'
+    'approve_estimates'
   ],
   ADMIN: [
     'view_all_estimates',
@@ -27,33 +67,22 @@ const PERMISSIONS = {
     'create_users',
     'edit_users',
     'delete_users',
+    'invite_users',
     'export_data',
     'system_settings',
-    'view_analytics',
-    'approve_estimates',
-    'create_estimates',
-    'edit_estimates',
-    'manage_consultations',
-    'view_all_consultations'
+    'view_analytics'
   ],
   MANAGER: [
     'view_team_estimates',
-    'view_all_estimates',
     'approve_estimates',
     'view_analytics',
-    'create_estimates',
-    'edit_estimates',
-    'export_team_data',
-    'manage_consultations',
-    'view_team_consultations'
+    'create_users',
+    'edit_users'
   ],
   CONSULTANT: [
     'create_estimates',
     'view_own_estimates',
-    'edit_own_estimates',
-    'export_own_data',
-    'manage_own_consultations',
-    'view_assigned_consultations'
+    'edit_estimates'
   ],
   VIEWER: [
     'view_own_estimates',
@@ -61,183 +90,152 @@ const PERMISSIONS = {
   ]
 };
 
-const initialState = {
-  user: null,
-  profile: null,
-  isAuthenticated: false,
-  loading: true,
-  permissions: []
+// Role hierarchy for user creation permissions
+const ROLE_HIERARCHY = {
+  SUPER_ADMIN: ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CONSULTANT', 'VIEWER'],
+  ADMIN: ['MANAGER', 'CONSULTANT', 'VIEWER'],
+  MANAGER: ['CONSULTANT', 'VIEWER'],
+  CONSULTANT: ['VIEWER'],
+  VIEWER: []
 };
-
-function authReducer(state, action) {
-  switch (action.type) {
-    case 'SET_USER':
-      return {
-        ...state,
-        user: action.payload?.user || null,
-        profile: action.payload?.profile || null,
-        isAuthenticated: !!action.payload?.user,
-        permissions: action.payload?.profile ? PERMISSIONS[action.payload.profile.role] || [] : [],
-        loading: false
-      };
-    case 'LOGOUT':
-      return {
-        ...state,
-        user: null,
-        profile: null,
-        isAuthenticated: false,
-        permissions: [],
-        loading: false
-      };
-    case 'SET_LOADING':
-      return {
-        ...state,
-        loading: action.payload
-      };
-    default:
-      return state;
-  }
-}
 
 export function AuthProvider({ children }) {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        dispatch({ type: 'SET_LOADING', payload: true });
-        console.log('🔄 Checking authentication...');
-        
-        const userData = await supabaseHelpers.getCurrentUser();
-        if (userData && userData.profile) {
-          console.log('✅ User authenticated:', userData.profile.name);
-          dispatch({ 
-            type: 'SET_USER', 
-            payload: { 
-              user: userData, 
-              profile: userData.profile 
-            } 
-          });
-        } else {
-          console.log('ℹ️ No authenticated user');
-          dispatch({ type: 'SET_LOADING', payload: false });
-        }
-      } catch (error) {
-        console.error('❌ Auth check failed:', error);
-        dispatch({ type: 'SET_LOADING', payload: false });
-      }
-    };
-
-    checkAuth();
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('🔄 Auth state changed:', event);
-      
-      if (event === 'SIGNED_IN' && session?.user) {
-        const userData = await supabaseHelpers.getCurrentUser();
-        dispatch({ 
-          type: 'SET_USER', 
-          payload: { 
-            user: userData, 
-            profile: userData.profile 
-          } 
-        });
-      } else if (event === 'SIGNED_OUT') {
-        dispatch({ type: 'LOGOUT' });
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    checkAuthState();
   }, []);
+
+  const checkAuthState = async () => {
+    try {
+      dispatch({ type: 'AUTH_LOADING', payload: true });
+      
+      const currentUser = await firebaseHelpers.getCurrentUser();
+      
+      if (currentUser && currentUser.profile) {
+        dispatch({
+          type: 'AUTH_SUCCESS',
+          payload: {
+            user: currentUser,
+            profile: currentUser.profile
+          }
+        });
+      } else {
+        dispatch({ type: 'AUTH_LOGOUT' });
+      }
+    } catch (error) {
+      console.error('Auth state check failed:', error);
+      dispatch({ type: 'AUTH_LOGOUT' });
+    }
+  };
 
   const login = async (email, password) => {
     try {
-      dispatch({ type: 'SET_LOADING', payload: true });
-      console.log('🔄 Attempting login for:', email);
+      dispatch({ type: 'AUTH_LOADING', payload: true });
       
-      const result = await supabaseHelpers.signIn(email, password);
+      const result = await firebaseHelpers.signIn(email, password);
       
       if (result && result.profile) {
-        console.log('✅ Login successful for:', result.profile.name);
-        dispatch({ 
-          type: 'SET_USER', 
-          payload: { 
-            user: result, 
-            profile: result.profile 
-          } 
+        dispatch({
+          type: 'AUTH_SUCCESS',
+          payload: {
+            user: result.user,
+            profile: result.profile
+          }
         });
-        return { success: true, user: result };
+        return { success: true };
       } else {
-        throw new Error('Login failed - no profile found');
+        throw new Error('Login failed - invalid credentials');
       }
     } catch (error) {
-      console.error('❌ Login failed:', error);
-      dispatch({ type: 'SET_LOADING', payload: false });
-      return { 
-        success: false, 
-        error: error.message || 'Login failed. Please check your credentials.' 
-      };
+      const errorMessage = error.message || 'Login failed';
+      dispatch({ type: 'AUTH_ERROR', payload: errorMessage });
+      return { success: false, error: errorMessage };
     }
   };
 
   const signUp = async (userData) => {
     try {
-      dispatch({ type: 'SET_LOADING', payload: true });
-      const result = await supabaseHelpers.signUp({
-        ...userData,
-        role: 'VIEWER' // Force VIEWER role for public signup
-      });
-      return { success: true, user: result.user };
+      dispatch({ type: 'AUTH_LOADING', payload: true });
+      
+      const result = await firebaseHelpers.signUp(userData);
+      
+      if (result && result.profile) {
+        dispatch({
+          type: 'AUTH_SUCCESS',
+          payload: {
+            user: result.user,
+            profile: result.profile
+          }
+        });
+        return { success: true };
+      } else {
+        throw new Error('Registration failed');
+      }
     } catch (error) {
-      console.error('❌ Sign up failed:', error);
-      return { 
-        success: false, 
-        error: error.message || 'Registration failed. Please try again.' 
-      };
-    } finally {
-      dispatch({ type: 'SET_LOADING', payload: false });
+      const errorMessage = error.message || 'Registration failed';
+      dispatch({ type: 'AUTH_ERROR', payload: errorMessage });
+      return { success: false, error: errorMessage };
     }
   };
 
   const logout = async () => {
     try {
-      await supabaseHelpers.signOut();
-      dispatch({ type: 'LOGOUT' });
+      await firebaseHelpers.signOut();
+      dispatch({ type: 'AUTH_LOGOUT' });
     } catch (error) {
-      console.error('❌ Logout failed:', error);
+      console.error('Logout error:', error);
+      // Force logout even if Firebase signOut fails
+      dispatch({ type: 'AUTH_LOGOUT' });
     }
   };
 
+  // Permission checking functions
   const hasPermission = (permission) => {
-    if (!state.isAuthenticated) return false;
-    return state.permissions.includes(permission);
+    if (!state.isAuthenticated || !state.profile) return false;
+    
+    const userRole = state.profile.role;
+    const rolePermissions = PERMISSIONS[userRole] || [];
+    
+    return rolePermissions.includes(permission);
   };
 
-  const hasRole = (role) => {
-    return state.profile?.role === role;
+  const canCreateRole = (targetRole) => {
+    if (!state.isAuthenticated || !state.profile) return false;
+    
+    const userRole = state.profile.role;
+    const creatableRoles = ROLE_HIERARCHY[userRole] || [];
+    
+    return creatableRoles.includes(targetRole);
   };
 
-  const hasAnyRole = (roles) => {
-    return roles.includes(state.profile?.role);
+  const hasAnyPermission = (permissionList) => {
+    return permissionList.some(permission => hasPermission(permission));
   };
 
-  const canCreateRole = (role) => {
-    if (!state.isAuthenticated) return false;
-    if (state.profile?.role === 'SUPER_ADMIN') return true;
-    if (state.profile?.role === 'ADMIN' && ['VIEWER', 'CONSULTANT', 'MANAGER'].includes(role)) return true;
-    return false;
+  const isRole = (role) => {
+    return state.isAuthenticated && state.profile?.role === role;
   };
 
   const value = {
-    ...state,
+    // State
+    isAuthenticated: state.isAuthenticated,
+    user: state.user,
+    profile: state.profile,
+    loading: state.loading,
+    error: state.error,
+    
+    // Actions
     login,
     signUp,
     logout,
+    checkAuthState,
+    
+    // Permission helpers
     hasPermission,
-    hasRole,
-    hasAnyRole,
-    canCreateRole
+    canCreateRole,
+    hasAnyPermission,
+    isRole
   };
 
   return (

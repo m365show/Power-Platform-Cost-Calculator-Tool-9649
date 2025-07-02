@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { supabaseHelpers } from '../utils/supabase';
+import { firebaseHelpers } from '../utils/firebase';
 
 export function useUserManagement() {
   const { profile } = useAuth();
@@ -16,10 +16,10 @@ export function useUserManagement() {
     try {
       setLoading(true);
       setError(null);
-      const userData = await supabaseHelpers.getUsers();
+      const userData = await firebaseHelpers.getUsers();
       setUsers(userData);
     } catch (error) {
-      console.error('Error fetching users:', error);
+      console.error('Error fetching Firebase users:', error);
       setError(error.message);
     } finally {
       setLoading(false);
@@ -29,11 +29,11 @@ export function useUserManagement() {
   const createUser = async (userData) => {
     try {
       setError(null);
-      const result = await supabaseHelpers.createUser(userData);
+      const result = await firebaseHelpers.signUp(userData);
       await fetchUsers(); // Refresh the list
       return result;
     } catch (error) {
-      console.error('Error creating user:', error);
+      console.error('Error creating Firebase user:', error);
       setError(error.message);
       throw error;
     }
@@ -42,10 +42,10 @@ export function useUserManagement() {
   const updateUser = async (userId, userData) => {
     try {
       setError(null);
-      await supabaseHelpers.updateUser(userId, userData);
+      await firebaseHelpers.updateUser(userId, userData);
       await fetchUsers(); // Refresh the list
     } catch (error) {
-      console.error('Error updating user:', error);
+      console.error('Error updating Firebase user:', error);
       setError(error.message);
       throw error;
     }
@@ -54,10 +54,10 @@ export function useUserManagement() {
   const deleteUser = async (userId) => {
     try {
       setError(null);
-      await supabaseHelpers.deleteUser(userId);
+      await firebaseHelpers.deleteUser(userId);
       await fetchUsers(); // Refresh the list
     } catch (error) {
-      console.error('Error deleting user:', error);
+      console.error('Error deleting Firebase user:', error);
       setError(error.message);
       throw error;
     }
@@ -67,11 +67,11 @@ export function useUserManagement() {
     try {
       setError(null);
       // In a real implementation, this would send an invitation email
-      console.log('Sending invitation to user:', userId);
+      console.log('Sending Firebase invitation to user:', userId);
       // For now, just update the user to show invitation sent
-      await updateUser(userId, { invitation_sent: new Date().toISOString() });
+      await updateUser(userId, { invitationSent: new Date().toISOString() });
     } catch (error) {
-      console.error('Error sending invitation:', error);
+      console.error('Error sending Firebase invitation:', error);
       setError(error.message);
       throw error;
     }
@@ -82,12 +82,12 @@ export function useUserManagement() {
   };
 
   const getActiveUsers = () => {
-    return users.filter(user => user.is_active);
+    return users.filter(user => user.isActive);
   };
 
   const getUserStats = () => {
     const total = users.length;
-    const active = users.filter(user => user.is_active).length;
+    const active = users.filter(user => user.isActive).length;
     const inactive = total - active;
     
     const roleStats = users.reduce((acc, user) => {

@@ -5,7 +5,7 @@ import * as FiIcons from 'react-icons/fi';
 import SafeIcon from '../common/SafeIcon';
 import { useAuth } from '../context/AuthContext';
 
-const { FiMenu, FiX, FiHome, FiCalculator, FiBarChart3, FiHelpCircle, FiUsers, FiLogIn, FiUser, FiUserPlus } = FiIcons;
+const { FiMenu, FiX, FiHome, FiCalculator, FiBarChart3, FiHelpCircle, FiUsers, FiUser } = FiIcons;
 
 function Navigation() {
   const [isOpen, setIsOpen] = useState(false);
@@ -13,19 +13,22 @@ function Navigation() {
   const location = useLocation();
   const { user, isAuthenticated, hasPermission } = useAuth();
 
+  // Public navigation items - NO Login/Signup here
   const publicNavItems = [
     { path: '/', label: 'Home', icon: FiHome },
     { path: '/calculator', label: 'Calculator', icon: FiCalculator },
     { path: '/get-started', label: 'Get Started Guide', icon: FiHelpCircle },
   ];
 
+  // Private navigation items (only shown when authenticated)
   const privateNavItems = [
     { path: '/results', label: 'Results', icon: FiBarChart3, requiresAuth: true },
     { path: '/dashboard', label: 'Dashboard', icon: FiBarChart3 },
     { path: '/users', label: 'Users', icon: FiUsers, permission: 'manage_users' },
   ];
 
-  const navItems = isAuthenticated
+  // Only show private items when authenticated
+  const navItems = isAuthenticated 
     ? [...publicNavItems, ...privateNavItems.filter(item => !item.permission || hasPermission?.(item.permission))]
     : publicNavItems;
 
@@ -38,6 +41,7 @@ function Navigation() {
     <nav className="bg-white shadow-sm border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
+          
           {/* Logo */}
           <div className="flex items-center space-x-2 cursor-pointer" onClick={() => handleNavigation('/')}>
             <div className="text-2xl">⚡</div>
@@ -63,8 +67,8 @@ function Navigation() {
               </button>
             ))}
 
-            {/* Auth Buttons */}
-            {isAuthenticated ? (
+            {/* User Profile - Only show if authenticated */}
+            {isAuthenticated && (
               <div className="flex items-center space-x-3">
                 <button
                   onClick={() => handleNavigation('/dashboard')}
@@ -76,23 +80,6 @@ function Navigation() {
                     </span>
                   </div>
                   <span>{user?.name}</span>
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center space-x-3">
-                <button
-                  onClick={() => handleNavigation('/signup')}
-                  className="flex items-center space-x-2 px-4 py-2 text-primary-600 border border-primary-600 rounded-lg hover:bg-primary-50 transition-colors"
-                >
-                  <SafeIcon icon={FiUserPlus} />
-                  <span>Sign Up</span>
-                </button>
-                <button
-                  onClick={() => handleNavigation('/login')}
-                  className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-                >
-                  <SafeIcon icon={FiLogIn} />
-                  <span>Login</span>
                 </button>
               </div>
             )}
@@ -133,8 +120,8 @@ function Navigation() {
                 </button>
               ))}
 
-              {/* Mobile Auth Buttons */}
-              {isAuthenticated ? (
+              {/* Mobile User Profile - Only show if authenticated */}
+              {isAuthenticated && (
                 <button
                   onClick={() => handleNavigation('/dashboard')}
                   className="flex items-center space-x-3 w-full px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:text-primary-600 hover:bg-gray-50"
@@ -142,23 +129,6 @@ function Navigation() {
                   <SafeIcon icon={FiUser} className="text-lg" />
                   <span>Dashboard ({user?.name})</span>
                 </button>
-              ) : (
-                <div className="space-y-2 pt-2 border-t border-gray-200">
-                  <button
-                    onClick={() => handleNavigation('/signup')}
-                    className="flex items-center space-x-3 w-full px-3 py-2 text-primary-600 border border-primary-600 rounded-lg hover:bg-primary-50 transition-colors"
-                  >
-                    <SafeIcon icon={FiUserPlus} className="text-lg" />
-                    <span>Create Account</span>
-                  </button>
-                  <button
-                    onClick={() => handleNavigation('/login')}
-                    className="flex items-center space-x-3 w-full px-3 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-                  >
-                    <SafeIcon icon={FiLogIn} className="text-lg" />
-                    <span>Sign In</span>
-                  </button>
-                </div>
               )}
             </div>
           </motion.div>
